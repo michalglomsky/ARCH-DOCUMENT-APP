@@ -1,0 +1,22 @@
+# .gitignore
+
+# Ignore the virtual environment folder
+venv/
+
+# Ignore Python cache files
+__pycache__/
+
+# CRITICAL: Ignore the .env file containing secrets
+.env
+
+# CRITICAL: Also ignore any raw credential files you might have in the project
+*.json
+
+# Google cloud configuration
+config.json
+
+# Ignore data and output folders
+DOKUMENTY SAMPLE/
+edited/
+processed_pdfs/
+test_files/

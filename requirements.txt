@@ -1,0 +1,13 @@
+pytesseract
+langchain
+langgraph
+groq
+Pillow
+python-dotenv
+torch
+transformers
+accelerate
+google-cloud-documentai
+ipython
+tabulate
+protobuf
