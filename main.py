@@ -202,21 +202,14 @@ def main():
     while True:
         print("\n--- Document Transcription & Editing CLI ---")
         print("What would you like to do?")
-        print("1. Transcribe a document")
-        print("2. Process a specific PDF from a directory")
-        print("3. Analyze Transcriptions with Agent") # New option
-        print("4. Exit") # Was 4
+        
+        print("1. Process a specific PDF from a directory")
+        print("2. Analyze Transcriptions with Agent") # New option
+        print("3. Exit") # Was 4
 
         choice = input("> ")
 
         if choice == '1':
-            print("Enter the path to the document you want to transcribe:")
-            filepath = input("> ")
-            filepath = filepath.strip('"')
-            print(filepath)
-            transcribe_document(filepath)
-
-        elif choice == '2':
             print("Enter the directory to search for PDFs:")
             search_dir = r"C:\Users\micha\Desktop\ARCH DOCUMENT APP\DOKUMENTY SAMPLE" # input("> ").strip('"')
             print("Enter the page numbers to extract (e.g., 1,3,5-7):")
@@ -225,15 +218,15 @@ def main():
             file_name = "wniosek.pdf" # input("> ").strip('"')
             process_directory_pdfs(search_dir, pages_to_extract, file_name)
 
-        elif choice == '3':
+        elif choice == '2':
             run_agent()
 
-        elif choice == '4':
+        elif choice == '3':
             print("Exiting the program.")
             break
             
         else:
-            print("Invalid choice. Please enter 1, 2, 3, or 4.")
+            print("Invalid choice. Please enter 1, 2 or 3.")
 
 if __name__ == "__main__":
     main()
