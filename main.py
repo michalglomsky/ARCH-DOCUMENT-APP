@@ -193,10 +193,6 @@ def process_directory_pdfs(search_dir, pages_to_extract_str, file_name):
 
 # --- Main Application Loop ---
 
-"""
-Opcje są uzupełnione w mainie choice == 3 for development purposes
-"""
-
 def main():
     """Main function to run the CLI application."""
     while True:
@@ -204,11 +200,12 @@ def main():
         print("What would you like to do?")
         
         print("1. Process a specific PDF from a directory")
-        print("2. Analyze Transcriptions with Agent") # New option
-        print("3. Exit") # Was 4
+        print("2. Analyze Transcriptions with Agent") 
+        print("3. Exit") 
 
         choice = input("> ")
-
+        
+        # Hardcoded directories for development and debugging purposes
         if choice == '1':
             print("Enter the directory to search for PDFs:")
             search_dir = r"C:\Users\micha\Desktop\ARCH DOCUMENT APP\DOKUMENTY SAMPLE" # input("> ").strip('"')
