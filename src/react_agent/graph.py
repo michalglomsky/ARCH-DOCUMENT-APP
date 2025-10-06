@@ -1,16 +1,21 @@
+# \textbf{MODIFIED IMPORT}
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from .state import AgentState
-from .tools import list_transcriptions, read_transcription, extract_personal_info, add_to_dataframe, display_dataframe, update_dataframe
-from langchain_groq import ChatGroq
+from .tools import list_transcriptions, read_transcription, extract_personal_info, add_to_dataframe, show_dataset, update_dataframe, mark_file_as_processed
 from langchain_core.messages import SystemMessage
 from .prompts import system_prompt
 
 def create_agent_graph():
     """Creates the langgraph agent."""
-    llm = ChatGroq(temperature=0, model_name="llama-3.1-8b-instant")
-    tools = [list_transcriptions, read_transcription, extract_personal_info, add_to_dataframe, display_dataframe, update_dataframe]
     
+    # Ensure your GOOGLE_API_KEY is set as an environment variable
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+    
+    tools = [list_transcriptions, read_transcription, extract_personal_info, add_to_dataframe, show_dataset, update_dataframe, mark_file_as_processed]
+    
+    # This line works the same for any LangChain model that supports tool calling
     llm_with_tools = llm.bind_tools(tools)
 
     # 1. Define the nodes
