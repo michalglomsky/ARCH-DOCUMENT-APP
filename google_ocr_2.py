@@ -1,10 +1,13 @@
 import os
 from google.cloud import documentai
+from google.api_core.client_options import ClientOptions
 
 def transcribe_document_google_ocr(project_id: str, location: str, processor_id: str, file_path: str, mime_type: str, output_file_path: str) -> None:
     """Transcribes a document using Google Cloud Document AI."""
     try:
-        client = documentai.DocumentProcessorServiceClient()
+        opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+        client = documentai.DocumentProcessorServiceClient(client_options=opts)
+        print("----------------",location,"-----------------")
         name = client.processor_path(project_id, location, processor_id)
 
         with open(file_path, "rb") as image:

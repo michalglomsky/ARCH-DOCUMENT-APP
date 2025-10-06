@@ -11,3 +11,6 @@ google-cloud-documentai
 ipython
 tabulate
 protobuf
+pandas
+PyMuPDF
+langchain-groq
