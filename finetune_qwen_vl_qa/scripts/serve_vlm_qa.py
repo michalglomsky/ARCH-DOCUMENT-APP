@@ -28,6 +28,10 @@ API endpoints:
          Body: {"pdf_path": "/abs/path/to/file.pdf", "max_pages": 6}
          → structured JSON record (nr_wniosku, budynki, media, …)
 
+    POST /query
+         Body: {"pdf_path": "/abs/path/to/file.pdf", "message": "What is the roof type?", "max_pages": 6}
+         → {"response": "..."}
+
     POST /extract_batch
          Body: {"pdf_dir": "/abs/path/to/folder", "max_pages": 6}
          → list of structured JSON records, one per PDF
@@ -122,6 +126,12 @@ class XlsxRequest(BaseModel):
     max_pages: int = 6
 
 
+class QueryRequest(BaseModel):
+    pdf_path: str
+    message: str
+    max_pages: int = 6
+
+
 @app.get("/health")
 def health():
     return {
@@ -154,6 +164,25 @@ def extract(req: ExtractRequest):
     if not pdf.is_file():
         raise HTTPException(status_code=404, detail=f"PDF not found: {req.pdf_path}")
     return _run_pdf(pdf, req.max_pages)
+
+
+@app.post("/query")
+def query(req: QueryRequest):
+    """Answer a free-text question about a document using all its pages as context."""
+    pdf = Path(req.pdf_path)
+    if not pdf.is_file():
+        raise HTTPException(status_code=404, detail=f"PDF not found: {req.pdf_path}")
+    tmp_dir, page_paths = render_pdf_to_tmp(pdf, dpi=200, max_pages=req.max_pages)
+    try:
+        with _lock:
+            raw = run_inference_multipage(
+                _model, _processor, page_paths, req.message, _device, max_new_tokens=512
+            )
+            if _device == "mps":
+                torch.mps.empty_cache()
+        return {"response": raw}
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @app.post("/extract_batch")
