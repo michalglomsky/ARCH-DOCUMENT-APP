@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARCH Document Extractor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- PDF.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+
+<!-- ===== TOP BAR ===== -->
+<div id="topbar">
+  <h1>ARCH Extractor</h1>
+
+  <select id="doc-select">
+    <option value="">— select document —</option>
+  </select>
+
+  <div id="page-controls">
+    <button id="prev-page">◀</button>
+    <span id="page-info">— / —</span>
+    <button id="next-page">▶</button>
+  </div>
+
+  <span class="spacer"></span>
+
+  <label id="max-pages-label">
+    Max pages:
+    <input id="max-pages" type="number" min="1" max="20" value="6">
+  </label>
+
+  <div id="vlm-status">VLM: checking…</div>
+</div>
+
+<!-- ===== MAIN ===== -->
+<div id="main">
+
+  <!-- PDF viewer -->
+  <div id="pdf-pane">
+    <div id="pdf-viewport">
+      <canvas id="pdf-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Data pane -->
+  <div id="data-pane">
+
+    <!-- Tabs -->
+    <div id="tabs">
+      <div class="tab active" data-tab="extract">Extraction</div>
+      <div class="tab" data-tab="compare">Compare</div>
+      <div class="tab" data-tab="chat">Chat</div>
+    </div>
+
+    <!-- ---- EXTRACTION TAB ---- -->
+    <div id="tab-extract" class="tab-panel active">
+      <div id="action-bar">
+        <button class="btn primary" id="btn-extract">⚡ Extract</button>
+        <button class="btn" id="btn-compare" disabled>⚖ Compare</button>
+        <button class="btn" id="btn-save" disabled>💾 Save</button>
+        <button class="btn" id="btn-reextract" disabled>🔄 Re-extract</button>
+      </div>
+      <div id="extract-panel">
+        <p class="text-muted" style="padding:16px">Select a document and click Extract.</p>
+      </div>
+    </div>
+
+    <!-- ---- COMPARE TAB ---- -->
+    <div id="tab-compare" class="tab-panel">
+      <div id="accuracy-bar-container" class="accuracy-bar" style="display:none">
+        <span id="accuracy-label">Accuracy: —</span>
+        <div class="accuracy-track">
+          <div class="accuracy-fill" id="accuracy-fill" style="width:0%"></div>
+        </div>
+        <span id="accuracy-pct"></span>
+      </div>
+      <div id="compare-panel" style="flex:1;overflow-y:auto;padding:8px">
+        <p class="text-muted" style="padding:8px">Run Extraction first, then click Compare.</p>
+      </div>
+    </div>
+
+    <!-- ---- CHAT TAB ---- -->
+    <div id="tab-chat" class="tab-panel">
+      <div id="chat-messages">
+        <p class="text-muted" style="padding:8px">Ask anything about the current document.</p>
+      </div>
+      <div id="chat-input-row">
+        <textarea id="chat-input" placeholder="Type a question…" rows="1"></textarea>
+        <button class="btn primary" id="btn-send">Send</button>
+      </div>
+    </div>
+
+  </div><!-- /data-pane -->
+</div><!-- /main -->
+
+<!-- Spinner -->
+<div id="spinner">
+  <span class="spin-icon">⏳</span>
+  <span id="spinner-msg">Working…</span>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
