@@ -9,7 +9,7 @@ Nanonets API.
 ## Overview of what was built
 
 ```
-OpenClawConfig/
+arch-document-app/
 ├── finetune_qwen_vl_pytorch/
 │   ├── scripts/
 │   │   ├── vlm_utils.py          ← shared prompt/inference/parsing utilities
@@ -73,7 +73,7 @@ This converts your PDF folder into per-page PNG images and scaffold JSONL files.
 source finetune_qwen_vl_pytorch/.venv311/bin/activate
 
 python finetune_qwen_vl_pytorch/scripts/prepare_dataset.py \
-    --pdf-dir  "Project Files" \
+    --pdf-dir  "/Users/michalglomski/Documents/ARCH-APP-Project-Files-Backup" \
     --output-dir finetune_qwen_vl_pytorch/data \
     --dpi 250 \
     --val-split 0.15
@@ -290,7 +290,7 @@ source demo_app/.venv/bin/activate
 #     endpoint: "http://127.0.0.1:8080/extract"
 
 python -m extractor_demo.cli \
-    --input-dir  "Project Files" \
+    --input-dir  "/Users/michalglomski/Documents/ARCH-APP-Project-Files-Backup" \
     --output-file results_local_vlm.xlsx \
     --config     demo_app/config.yaml
 ```
@@ -307,7 +307,7 @@ export NANONETS_API_KEY="your-key-here"
 #     endpoint: "https://app.nanonets.com/api/v2/..."
 
 python -m extractor_demo.cli \
-    --input-dir  "Project Files" \
+    --input-dir  "/Users/michalglomski/Documents/ARCH-APP-Project-Files-Backup" \
     --output-file results_nanonets.xlsx \
     --config     demo_app/config.yaml
 ```
@@ -361,7 +361,7 @@ points to your correct workflow extraction URL.
 
 ## Important notes for MPS (vs CUDA/Unsloth)
 
-The plan document (`VLM_OCR_COSTS_AND_PLAN.md`) recommends Unsloth — but
+Note: Unsloth is sometimes recommended for LoRA fine-tuning — but
 **Unsloth requires CUDA and does not support MPS**.
 
 The scripts in this repo use plain HuggingFace PEFT + PyTorch, which is the

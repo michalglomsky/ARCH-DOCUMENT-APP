@@ -26,7 +26,7 @@ after parsing it — no manual labeling step required.
 ## Directory layout
 
 ```
-OpenClawConfig/
+arch-document-app/
 ├── finetune_qwen_vl_qa/
 │   ├── scripts/
 │   │   ├── parse_excel_labels.py   ← Excel → labels.json
@@ -72,7 +72,7 @@ permit number to a structured Python dict.
 source finetune_qwen_vl_pytorch/.venv311/bin/activate
 
 python finetune_qwen_vl_qa/scripts/parse_excel_labels.py \
-    --excel   "Project Files/1-2026-DANE.xlsx" \
+    --excel   "/Users/michalglomski/Documents/ARCH-APP-Project-Files-Backup/1-2026-DANE.xlsx" \
     --output  finetune_qwen_vl_qa/data/labels.json
 ```
 
@@ -126,7 +126,7 @@ This renders PDFs to images and pairs each document with its Excel label.
 
 ```bash
 python finetune_qwen_vl_qa/scripts/prepare_qa_dataset.py \
-    --pdf-dir     "Project Files" \
+    --pdf-dir     "/Users/michalglomski/Documents/ARCH-APP-Project-Files-Backup" \
     --labels-json finetune_qwen_vl_qa/data/labels.json \
     --output-dir  finetune_qwen_vl_qa/data \
     --dpi         200 \
@@ -172,7 +172,7 @@ Each JSONL record:
 
 ### Expected match rate
 
-Not every PDF in `Project Files/` has a row in the Excel — some are
+Not every PDF in the backup folder has a row in the Excel — some are
 `wz_un_*` (unknown series) or `wz_zal_*` (attachments). The script reports
 how many matched and lists the unmatched ones in `unlabeled.jsonl`.
 
@@ -202,7 +202,7 @@ Per-field accuracy:
   ...
 ```
 
-Open `eval_qa_baseline.xlsx` alongside `Project Files/1-2026-DANE.xlsx` to
+Open `eval_qa_baseline.xlsx` alongside the backup `1-2026-DANE.xlsx` to
 compare column by column.
 
 ---
@@ -337,7 +337,7 @@ Expected response:
 curl -s -X POST http://127.0.0.1:8081/extract_to_xlsx \
   -H "Content-Type: application/json" \
   -d '{
-    "pdf_dir": "/abs/path/Project Files",
+    "pdf_dir": "/Users/michalglomski/Documents/ARCH-APP-Project-Files-Backup",
     "output_xlsx": "/abs/path/results_qa.xlsx"
   }'
 ```
