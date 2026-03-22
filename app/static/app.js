@@ -75,21 +75,39 @@ $('btn-save-config').addEventListener('click', async () => {
   }
 });
 
-// "Browse" button in settings opens directory modal targeting pdf_dir field
+// Browse buttons in settings
 $('btn-browse-pdf').addEventListener('click', () => {
-  openDirModal($('cfg-pdf-dir').value || '/', (chosenPath) => {
+  openDirModal($('cfg-pdf-dir').value || '/', null, (chosenPath) => {
     $('cfg-pdf-dir').value = chosenPath;
+  });
+});
+
+$('btn-browse-labels').addEventListener('click', () => {
+  // Start in the directory containing the current labels file (or pdf_dir)
+  const current = $('cfg-labels-xlsx').value;
+  const startDir = current
+    ? current.substring(0, current.lastIndexOf('/')) || '/'
+    : $('cfg-pdf-dir').value || '/';
+  openDirModal(startDir, '.xlsx,.xls', (chosenPath) => {
+    $('cfg-labels-xlsx').value = chosenPath;
   });
 });
 
 // ============================================================
 // Directory Browser Modal
 // ============================================================
-let _modalCallback = null;
+let _modalCallback  = null;
+let _modalShowExt   = '';     // '' = directory picker, '.xlsx,.xls' = file picker
 let _modalCurrentPath = '/';
 
-function openDirModal(startPath, onSelect) {
+function openDirModal(startPath, showExt, onSelect) {
   _modalCallback = onSelect;
+  _modalShowExt  = showExt || '';
+  // Update modal title and select-button label based on mode
+  document.querySelector('.modal-title').textContent = showExt ? 'Choose Excel File' : 'Choose PDF Folder';
+  $('btn-modal-select').textContent = showExt ? 'Select file' : 'Use this folder';
+  // In file-picker mode the select button is disabled until a file is clicked
+  $('btn-modal-select').disabled = !!showExt;
   $('dir-modal').classList.remove('hidden');
   browseTo(startPath || '/');
 }
@@ -116,7 +134,9 @@ async function browseTo(path) {
   const body = $('modal-body');
   body.innerHTML = '<p class="text-muted">Loading…</p>';
   try {
-    const data = await api('GET', `/api/browse?path=${encodeURIComponent(path)}`);
+    const url = `/api/browse?path=${encodeURIComponent(path)}` +
+                (_modalShowExt ? `&show_ext=${encodeURIComponent(_modalShowExt)}` : '');
+    const data = await api('GET', url);
     _modalCurrentPath = data.path;
 
     // Breadcrumb
@@ -135,31 +155,53 @@ async function browseTo(path) {
       el.addEventListener('click', () => browseTo(el.dataset.path));
     });
 
-    // PDF count
-    $('modal-pdf-count').textContent = data.pdf_count
-      ? `${data.pdf_count} PDF${data.pdf_count !== 1 ? 's' : ''} in this folder`
-      : 'No PDFs in this folder';
+    // Footer info
+    if (_modalShowExt) {
+      const fc = (data.files || []).length;
+      $('modal-pdf-count').textContent = fc
+        ? `${fc} Excel file${fc !== 1 ? 's' : ''} in this folder`
+        : 'No Excel files in this folder';
+    } else {
+      $('modal-pdf-count').textContent = data.pdf_count
+        ? `${data.pdf_count} PDF${data.pdf_count !== 1 ? 's' : ''} in this folder`
+        : 'No PDFs in this folder';
+    }
 
-    // Directory list
+    // Build list
     let html = '';
     if (data.parent) {
-      html += `<div class="dir-item up" data-path="${esc(data.parent)}">
-        <span class="dir-icon">⬆</span>
-        <span class="dir-name">.. (up)</span>
+      html += `<div class="dir-item up" data-path="${esc(data.parent)}" data-type="dir">
+        <span class="dir-icon">⬆</span><span class="dir-name">.. (up)</span>
       </div>`;
-    }
-    if (data.dirs.length === 0 && !data.parent) {
-      html += '<p class="text-muted">No subdirectories found.</p>';
     }
     data.dirs.forEach(d => {
-      html += `<div class="dir-item" data-path="${esc(d.path)}">
-        <span class="dir-icon">📁</span>
-        <span class="dir-name">${esc(d.name)}</span>
+      html += `<div class="dir-item" data-path="${esc(d.path)}" data-type="dir">
+        <span class="dir-icon">📁</span><span class="dir-name">${esc(d.name)}</span>
       </div>`;
     });
+    (data.files || []).forEach(f => {
+      html += `<div class="dir-item file" data-path="${esc(f.path)}" data-type="file">
+        <span class="dir-icon">📊</span><span class="dir-name">${esc(f.name)}</span>
+      </div>`;
+    });
+    if (!html) html = '<p class="text-muted">Empty folder.</p>';
     body.innerHTML = html;
+
     body.querySelectorAll('.dir-item').forEach(el => {
-      el.addEventListener('click', () => browseTo(el.dataset.path));
+      el.addEventListener('click', () => {
+        if (el.dataset.type === 'file') {
+          // File selected — highlight and enable select button
+          body.querySelectorAll('.dir-item.selected').forEach(x => x.classList.remove('selected'));
+          el.classList.add('selected');
+          el.style.background = 'rgba(45,154,95,.25)';
+          _modalCurrentPath = el.dataset.path;
+          $('btn-modal-select').disabled = false;
+          $('btn-modal-select').textContent = `Select "${esc(el.querySelector('.dir-name').textContent)}"`;
+        } else {
+          // Directory — navigate into it
+          browseTo(el.dataset.path);
+        }
+      });
     });
   } catch (e) {
     body.innerHTML = `<p class="text-muted">Error: ${esc(e.message)}</p>`;

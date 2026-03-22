@@ -274,6 +274,9 @@ td.gold-cell { width: auto; }
 .dir-item .dir-name { flex: 1; color: #e0e0e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dir-item.up { color: #888; }
 .dir-item.up .dir-name { color: #888; font-style: italic; }
+.dir-item.file { background: rgba(45,154,95,.04); }
+.dir-item.file:hover { background: rgba(45,154,95,.15); }
+.dir-item.file .dir-name { color: #74c69d; }
 
 .modal-footer {
   display: flex; align-items: center; gap: 8px;

@@ -98,10 +98,11 @@ def set_config(body: dict):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/browse")
-def browse(path: str = "/"):
+def browse(path: str = "/", show_ext: str = ""):
     """
-    List subdirectories and PDF count at the given path.
-    Used by the directory picker in the UI.
+    List subdirectories (and optionally files) at the given path.
+    show_ext: comma-separated extensions to include as selectable files, e.g. ".xlsx,.xls"
+    Used by the directory/file picker in the UI.
     """
     p = Path(path).expanduser().resolve()
     if not p.exists() or not p.is_dir():
@@ -117,12 +118,22 @@ def browse(path: str = "/"):
     )
     pdf_count = sum(1 for e in entries if e.suffix.lower() == ".pdf")
 
-    return {
+    result: dict = {
         "path":      str(p),
         "parent":    str(p.parent) if p.parent != p else None,
         "dirs":      [{"name": d.name, "path": str(d)} for d in dirs],
         "pdf_count": pdf_count,
     }
+
+    if show_ext:
+        exts = {e.strip().lower() for e in show_ext.split(",")}
+        files = sorted(
+            [e for e in entries if e.is_file() and e.suffix.lower() in exts],
+            key=lambda x: x.name.lower(),
+        )
+        result["files"] = [{"name": f.name, "path": str(f)} for f in files]
+
+    return result
 
 
 # ---------------------------------------------------------------------------
