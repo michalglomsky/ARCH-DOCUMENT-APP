@@ -1,98 +1,106 @@
-# ARCH DOCUMENT APP
+# ARCH-DOCUMENT-APP
 
-**DISCLAIMER:** This project is currently under active development. Features may be incomplete or subject to change.
+Automated extraction of structured data from Polish construction permit application forms (wnioski o warunki zabudowy / pozwolenie na budowę) using a locally-run Vision Language Model (Qwen2.5-VL-7B) fine-tuned with LoRA on Apple Silicon (M3 Ultra).
 
-## About The Project
+---
 
-This project is a command-line interface (CLI) application designed to streamline the processing and analysis of architectural documents. It automates the extraction of specific pages from PDF documents, performs Optical Character Recognition (OCR) using Google Cloud Document AI, and provides an interactive agent for data analysis.
+## What it does
 
-## Features
+Given a scanned PDF of a construction permit application, the model extracts:
 
-*   **PDF Page Extraction:** Extracts specific pages or page ranges from PDF files.
-*   **OCR Transcription:** Uses Google Cloud Document AI for high-quality text transcription from images and PDFs.
-*   **Interactive Analysis Agent:** An interactive agent, built with `langchain` and `langgraph`, to analyze the transcribed documents.
-*   **Versioned Output:** Automatically versions output files to prevent overwriting existing data.
+- Permit number, fill method, investment name, address, plot description
+- Built-up area, facade width, floor counts, building height, roof geometry — per building
+- Utilities (water, electricity, gas, heating, sewage)
 
-## Getting Started
+Output is a structured JSON that maps directly to the master Excel spreadsheet (`Project Files/1-2026-DANE.xlsx`).
 
-### Prerequisites
+---
 
-*   Python 3.x
-*   Google Cloud SDK authenticated with a project that has the Document AI API enabled.
-*   A `config.json` file in the root directory with the following format:
-    ```json
-    {
-      "PROJECT_ID": "your-gcp-project-id",
-      "LOCATION": "your-gcp-project-location",
-      "PROCESSOR_ID": "your-document-ai-processor-id"
-    }
-    ```
+## Two parallel pipelines
 
-### Installation
+This repo contains two independent fine-tuning approaches. Both use the same base model and the same source PDFs — the difference is in how training data is structured.
 
-1.  Clone the repository:
-    ```sh
-    git clone https://github.com/your_username/ARCH-DOCUMENT-APP.git
-    ```
-2.  Install the required dependencies:
-    ```sh
-    pip install -r requirements.txt
-    ```
+### `pipeline/page-level` — Original approach
+Guide: `PIPELINE_GUIDE.md`
 
-### Usage
+- Processes one **page image at a time**
+- Extracts a flat JSON per page, merges results across pages
+- Labels must be created manually (or bootstrapped via Nanonets)
+- Good starting point; simpler data pipeline
 
-Run the main application from the command line:
+### `pipeline/qa-pairs` — QA-pair approach (recommended)
+Guide: `QA_PIPELINE_GUIDE.md`
 
-```sh
-python main.py
+- Processes all pages of a document **in a single model call**
+- Uses `1-2026-DANE.xlsx` directly as ground truth — no manual labeling needed
+- Outputs nested JSON with a `budynki` list (one entry per building) and a `media` list
+- Better cross-page context; handles multi-building forms natively
+
+| | Page-level | QA-pairs |
+|---|---|---|
+| Training unit | Single page | Full document |
+| Labels | Manual / Nanonets | Already in Excel |
+| Multi-building forms | Merge heuristic | Native list |
+| Cross-page context | None | Full document |
+| Ready to train immediately | No (labeling required) | Yes |
+
+---
+
+## Repository structure
+
+```
+ARCH-DOCUMENT-APP/
+├── Project Files/
+│   ├── 1-2026-DANE.xlsx          ← master label spreadsheet (tracked in git)
+│   └── wz_*.pdf                  ← source permit PDFs (not tracked, too large)
+├── finetune_qwen_vl_pytorch/     ← page-level pipeline code
+│   ├── scripts/
+│   ├── train/
+│   └── requirements.txt
+├── finetune_qwen_vl_qa/          ← QA-pair pipeline code
+│   ├── scripts/
+│   ├── train/
+│   └── requirements.txt
+├── demo_app/                     ← batch PDF → Excel runner + Nanonets comparison
+├── PIPELINE_GUIDE.md             ← step-by-step for page-level pipeline
+├── QA_PIPELINE_GUIDE.md          ← step-by-step for QA-pair pipeline
+└── README.md                     ← this file
 ```
 
-The application will present a menu with the following options:
+---
 
-### 1. Process a specific PDF from a directory
+## Prerequisites
 
-This option allows you to perform the core document processing workflow. When you select this option, the application will prompt you for the following information:
+- macOS with Apple Silicon (MPS) — tested on M3 Ultra 96 GB
+- Python 3.11
+- PDFs in `Project Files/` (not committed to git)
 
-*   **Directory to search for PDFs:** The root directory where the application will search for your PDF files.
-*   **Page numbers to extract:** You can specify a single page (e.g., `1`), a comma-separated list of pages (e.g., `1,3,5`), or a range of pages (e.g., `5-7`).
-*   **Name of the PDF file to process:** The name of the PDF file you want to process (e.g., `wniosek.pdf`).
+```bash
+brew install python@3.11
+/opt/homebrew/bin/python3.11 -m venv finetune_qwen_vl_pytorch/.venv311
+source finetune_qwen_vl_pytorch/.venv311/bin/activate
+pip install -r finetune_qwen_vl_pytorch/requirements.txt
+pip install -U "git+https://github.com/huggingface/transformers"
+pip install openpyxl  # required for QA-pair pipeline only
+```
 
-The application will then:
+---
 
-1.  Search for the specified PDF file in the given directory and its subdirectories.
-2.  For each found PDF, it will extract the specified pages into a new, processed PDF file. This new file will be saved in the `output/processed_pdfs` directory with a unique name based on the original file name and its parent directory.
-3.  The extracted PDF is then sent to the Google Cloud Document AI API for OCR transcription.
-4.  The transcribed text is saved to a `.txt` file in the `output/transcription_output_dir` directory.
+## Where to start
 
-### 2. Analyze Transcriptions with Agent
+- **To understand the full workflow:** read `QA_PIPELINE_GUIDE.md` — it is the more complete and easier-to-run pipeline since labels are already available in the Excel file.
+- **To compare approaches:** run both pipelines to the evaluation step and open the resulting `.xlsx` files side by side.
+- **To run inference on new PDFs:** start the server from either pipeline and POST a PDF path to `/extract`.
 
-This option launches an interactive chat session with an AI agent. The agent is designed to help you analyze the transcribed documents. You can ask the agent questions about the content of the transcriptions, and it will use its language understanding capabilities to provide answers. The agent is built using `langchain` and `langgraph`, and it can work with the transcribed data in a structured way.
+---
 
-To exit the agent, type `finished`.
+## Branches
 
-### 3. Exit
+| Branch | Description |
+|--------|-------------|
+| `main` | Shared files: guides, `.gitignore`, README |
+| `pipeline/page-level` | Page-level pipeline code |
+| `pipeline/qa-pairs` | QA-pair pipeline code |
+| `demo_1_ocr` | Original repo state (backup) |
 
-This option exits the program.
-
-
-## Dependencies
-
-The project uses the following major dependencies:
-
-*   `pytesseract`
-*   `langchain`
-*   `langgraph`
-*   `groq`
-*   `Pillow`
-*   `python-dotenv`
-*   `torch`
-*   `transformers`
-*   `accelerate`
-*   `google-cloud-documentai`
-*   `ipython`
-*   `tabulate`
-*   `protobuf`
-*   `pandas`
-*   `PyMuPDF`
-*   `langchain-groq`
-
+When a pipeline is ready for production, merge its branch into `main` via a pull request.
