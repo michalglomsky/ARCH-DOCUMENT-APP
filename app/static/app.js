@@ -4,172 +4,180 @@
 
 'use strict';
 
-// ---- PDF.js setup ----
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 // ---- State ----
-let currentDoc   = null;   // { name, stem }
-let pdfDoc       = null;   // PDF.js document
-let currentPage  = 1;
-let lastPrediction = null; // last VLM extraction result
-let renderTask   = null;
+let currentDoc     = null;
+let pdfDoc         = null;
+let currentPage    = 1;
+let renderTask     = null;
+let lastPrediction = null;   // live prediction object (mutated on cell edits)
+let lastComparison = null;   // last compare result from server
+let schema         = null;   // {flat: [...], building: [...]}
+let editedKeys     = new Set();  // tracks which keys were manually edited
 
-// ---- DOM refs ----
-const docSelect    = document.getElementById('doc-select');
-const prevBtn      = document.getElementById('prev-page');
-const nextBtn      = document.getElementById('next-page');
-const pageInfo     = document.getElementById('page-info');
-const pdfCanvas    = document.getElementById('pdf-canvas');
-const vlmStatus    = document.getElementById('vlm-status');
-const maxPagesInput = document.getElementById('max-pages');
-const spinner      = document.getElementById('spinner');
-const spinnerMsg   = document.getElementById('spinner-msg');
-
-const btnExtract   = document.getElementById('btn-extract');
-const btnCompare   = document.getElementById('btn-compare');
-const btnSave      = document.getElementById('btn-save');
-const btnReextract = document.getElementById('btn-reextract');
-const extractPanel = document.getElementById('extract-panel');
-
-const comparePanel = document.getElementById('compare-panel');
-const accuracyBarContainer = document.getElementById('accuracy-bar-container');
-const accuracyFill = document.getElementById('accuracy-fill');
-const accuracyLabel = document.getElementById('accuracy-label');
-const accuracyPct  = document.getElementById('accuracy-pct');
-
-const chatMessages = document.getElementById('chat-messages');
-const chatInput    = document.getElementById('chat-input');
-const btnSend      = document.getElementById('btn-send');
-
-// ============================================================
-// Spinner helpers
-// ============================================================
-function showSpinner(msg = 'Working…') {
-  spinnerMsg.textContent = msg;
-  spinner.classList.add('active');
-}
-function hideSpinner() {
-  spinner.classList.remove('active');
-}
+// ---- DOM ----
+const $  = id => document.getElementById(id);
+const docSelect    = $('doc-select');
+const prevBtn      = $('prev-page');
+const nextBtn      = $('next-page');
+const pageInfo     = $('page-info');
+const pdfCanvas    = $('pdf-canvas');
+const vlmStatus    = $('vlm-status');
+const maxPages     = $('max-pages');
+const spinner      = $('spinner');
+const spinnerMsg   = $('spinner-msg');
+const btnExtract   = $('btn-extract');
+const btnCompare   = $('btn-compare');
+const btnSave      = $('btn-save');
+const btnReextract = $('btn-reextract');
+const gridContainer = $('grid-container');
+const accuracyBar  = $('accuracy-bar');
+const accFill      = $('acc-fill');
+const accPct       = $('acc-pct');
+const accCounts    = $('acc-counts');
+const compareModeLabel = $('compare-mode-label');
+const chkCompareMode   = $('chk-compare-mode');
 
 // ============================================================
-// API helpers
+// Spinner
+// ============================================================
+const showSpinner = (msg = 'Working…') => { spinnerMsg.textContent = msg; spinner.classList.add('active'); };
+const hideSpinner = () => spinner.classList.remove('active');
+
+// ============================================================
+// API
 // ============================================================
 async function api(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body !== undefined) opts.body = JSON.stringify(body);
   const r = await fetch(path, opts);
   if (!r.ok) {
-    const err = await r.json().catch(() => ({ detail: r.statusText }));
-    throw new Error(err.detail || r.statusText);
+    const e = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(e.detail || r.statusText);
   }
   return r.json();
 }
 
 // ============================================================
-// VLM health check
+// Settings drawer
+// ============================================================
+$('btn-settings').addEventListener('click', async () => {
+  const drawer = $('settings-drawer');
+  if (drawer.classList.toggle('hidden')) return;
+  // Populate with current config
+  const cfg = await api('GET', '/api/config').catch(() => ({}));
+  $('cfg-pdf-dir').value    = cfg.pdf_dir    || '';
+  $('cfg-labels-xlsx').value = cfg.labels_xlsx || '';
+  $('cfg-vlm-url').value    = cfg.vlm_url    || '';
+});
+
+$('btn-save-config').addEventListener('click', async () => {
+  const body = {
+    pdf_dir:     $('cfg-pdf-dir').value.trim(),
+    labels_xlsx: $('cfg-labels-xlsx').value.trim(),
+    vlm_url:     $('cfg-vlm-url').value.trim(),
+  };
+  try {
+    await api('POST', '/api/config', body);
+    $('cfg-status').textContent = '✓ Applied';
+    $('cfg-status').style.color = '#74c69d';
+    // Reload document list with new dir
+    await loadDocuments();
+    setTimeout(() => { $('cfg-status').textContent = ''; }, 3000);
+  } catch (e) {
+    $('cfg-status').textContent = '✗ ' + e.message;
+    $('cfg-status').style.color = '#f4a3a3';
+  }
+});
+
+// ============================================================
+// VLM health
 // ============================================================
 async function checkVlmHealth() {
   try {
-    const data = await api('GET', '/api/vlm/health');
-    if (data.status === 'ok') {
-      const adapter = data.adapter && data.adapter !== 'none (zero-shot)'
-        ? ' + LoRA' : ' (zero-shot)';
-      vlmStatus.textContent = `VLM: ✓ ${data.device}${adapter}`;
+    const d = await api('GET', '/api/vlm/health');
+    if (d.status === 'ok') {
+      const adapter = d.adapter && d.adapter !== 'none (zero-shot)' ? ' +LoRA' : '';
+      vlmStatus.textContent = `VLM ✓ ${d.device}${adapter}`;
       vlmStatus.className = 'ok';
-    } else {
-      vlmStatus.textContent = `VLM: ✗ offline`;
-      vlmStatus.className = 'error';
-    }
+    } else throw new Error();
   } catch {
-    vlmStatus.textContent = 'VLM: ✗ offline';
+    vlmStatus.textContent = 'VLM ✗ offline';
     vlmStatus.className = 'error';
   }
 }
 
 // ============================================================
-// Document list
+// Documents & PDF
 // ============================================================
 async function loadDocuments() {
-  try {
-    const docs = await api('GET', '/api/documents');
-    docSelect.innerHTML = '<option value="">— select document —</option>';
-    docs.forEach(d => {
-      const opt = document.createElement('option');
-      opt.value = d.name;
-      opt.textContent = d.name;
-      docSelect.appendChild(opt);
-    });
-  } catch (e) {
-    console.error('Failed to load documents:', e);
-  }
-}
-
-// ============================================================
-// PDF viewer
-// ============================================================
-async function loadPdf(filename) {
-  if (!filename) return;
-  showSpinner('Loading PDF…');
-  try {
-    const url = `/api/pdf/${encodeURIComponent(filename)}`;
-    pdfDoc = await pdfjsLib.getDocument(url).promise;
-    currentPage = 1;
-    await renderPage(currentPage);
-  } catch (e) {
-    alert('Failed to load PDF: ' + e.message);
-  } finally {
-    hideSpinner();
-  }
-}
-
-async function renderPage(pageNum) {
-  if (!pdfDoc) return;
-  if (renderTask) { renderTask.cancel(); renderTask = null; }
-
-  const page = await pdfDoc.getPage(pageNum);
-  const viewport = page.getViewport({ scale: 1.4 });
-  const ctx = pdfCanvas.getContext('2d');
-  pdfCanvas.width  = viewport.width;
-  pdfCanvas.height = viewport.height;
-
-  renderTask = page.render({ canvasContext: ctx, viewport });
-  await renderTask.promise.catch(e => {
-    if (e.name !== 'RenderingCancelledException') throw e;
+  const docs = await api('GET', '/api/documents').catch(() => []);
+  const prev = docSelect.value;
+  docSelect.innerHTML = '<option value="">— select document —</option>';
+  (Array.isArray(docs) ? docs : []).forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.name; o.textContent = d.name;
+    if (d.name === prev) o.selected = true;
+    docSelect.appendChild(o);
   });
-  renderTask = null;
-
-  pageInfo.textContent = `${pageNum} / ${pdfDoc.numPages}`;
-  prevBtn.disabled = pageNum <= 1;
-  nextBtn.disabled = pageNum >= pdfDoc.numPages;
 }
-
-prevBtn.addEventListener('click', () => {
-  if (currentPage > 1) { currentPage--; renderPage(currentPage); }
-});
-nextBtn.addEventListener('click', () => {
-  if (pdfDoc && currentPage < pdfDoc.numPages) { currentPage++; renderPage(currentPage); }
-});
 
 docSelect.addEventListener('change', () => {
   const name = docSelect.value;
   if (!name) return;
   currentDoc = { name, stem: name.replace(/\.pdf$/i, '') };
-  lastPrediction = null;
-  setExtractionButtons(false);
-  extractPanel.innerHTML = '<p class="text-muted" style="padding:16px">Document loaded. Click Extract.</p>';
-  clearCompare();
+  lastPrediction = null; lastComparison = null; editedKeys.clear();
+  setButtons(false);
+  compareModeLabel.style.display = 'none';
+  accuracyBar.classList.add('hidden');
+  gridContainer.innerHTML = '<p class="text-muted">Document loaded. Click ⚡ Extract.</p>';
   loadPdf(name);
 });
+
+async function loadPdf(filename) {
+  showSpinner('Loading PDF…');
+  try {
+    pdfDoc = await pdfjsLib.getDocument(`/api/pdf/${encodeURIComponent(filename)}`).promise;
+    currentPage = 1;
+    await renderPage(1);
+  } catch (e) { alert('PDF load failed: ' + e.message); }
+  finally { hideSpinner(); }
+}
+
+async function renderPage(n) {
+  if (!pdfDoc) return;
+  if (renderTask) { renderTask.cancel(); renderTask = null; }
+  const page = await pdfDoc.getPage(n);
+  const vp   = page.getViewport({ scale: 1.35 });
+  pdfCanvas.width  = vp.width;
+  pdfCanvas.height = vp.height;
+  renderTask = page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport: vp });
+  await renderTask.promise.catch(e => { if (e.name !== 'RenderingCancelledException') throw e; });
+  renderTask = null;
+  pageInfo.textContent = `${n} / ${pdfDoc.numPages}`;
+  prevBtn.disabled = n <= 1;
+  nextBtn.disabled = n >= pdfDoc.numPages;
+}
+
+prevBtn.addEventListener('click', () => { if (currentPage > 1) renderPage(--currentPage); });
+nextBtn.addEventListener('click', () => { if (pdfDoc && currentPage < pdfDoc.numPages) renderPage(++currentPage); });
+
+// ============================================================
+// Schema
+// ============================================================
+async function loadSchema() {
+  schema = await api('GET', '/api/schema').catch(() => null);
+}
 
 // ============================================================
 // Extraction
 // ============================================================
-function setExtractionButtons(hasResult) {
-  btnCompare.disabled   = !hasResult;
-  btnSave.disabled      = !hasResult;
-  btnReextract.disabled = !hasResult;
+function setButtons(has) {
+  btnCompare.disabled   = !has;
+  btnSave.disabled      = !has;
+  btnReextract.disabled = !has;
 }
 
 btnExtract.addEventListener('click', runExtract);
@@ -179,92 +187,19 @@ async function runExtract() {
   if (!currentDoc) { alert('Select a document first.'); return; }
   showSpinner('Extracting…');
   try {
-    const result = await api('POST', '/api/extract', {
+    const pred = await api('POST', '/api/extract', {
       pdf_name: currentDoc.name,
-      max_pages: parseInt(maxPagesInput.value) || 6,
+      max_pages: parseInt(maxPages.value) || 6,
     });
-    lastPrediction = result;
-    renderExtraction(result);
-    setExtractionButtons(true);
-    clearCompare();
-  } catch (e) {
-    alert('Extraction failed: ' + e.message);
-  } finally {
-    hideSpinner();
-  }
-}
-
-function renderExtraction(pred) {
-  const flat = [
-    { label: 'Nr wniosku',            key: 'nr_wniosku' },
-    { label: 'Sposób wypełnienia',    key: 'sposob_wypelnienia' },
-    { label: 'Flaga 7.9',             key: 'flaga_7_9' },
-    { label: 'Nazwa inwestycji',       key: 'nazwa_inwestycji' },
-    { label: 'Adres',                  key: 'adres' },
-    { label: 'Teren inwestycji',       key: 'teren_inwestycji' },
-    { label: 'Pow. zabudowy (całość)', key: 'pow_zabudowy_calosc' },
-  ];
-
-  let html = '';
-
-  if (pred.needs_review) {
-    html += '<div class="needs-review" style="padding:4px 8px;margin-bottom:8px">⚠ needs_review = true</div>';
-  }
-  if (pred._parse_error) {
-    html += `<div class="needs-review" style="padding:4px 8px;margin-bottom:8px">⚠ parse error: ${esc(pred._parse_error)}</div>`;
-  }
-
-  flat.forEach(f => {
-    html += fieldHtml(f.label, pred[f.key]);
-  });
-
-  // Buildings
-  const buildings = pred.budynki || [];
-  if (buildings.length) {
-    html += '<div class="section-title">Budynki</div>';
-    buildings.forEach((b, i) => {
-      html += `<div class="building-block"><div class="building-title">${esc(b.oznaczenie || `Budynek ${i+1}`)}</div>`;
-      [
-        ['Szerokość elewacji',     'szerokosc_elewacji'],
-        ['Pow. nadziemne',         'suma_pow_nadziemnych'],
-        ['Pow. podziemne',         'suma_pow_podziemnych'],
-        ['Wys. górnej krawędzi',   'wys_gornej_krawedzi'],
-        ['Wysokość zabudowy',      'wysokosc_zabudowy'],
-        ['Kond. nadziemne',        'ilosc_kond_nadziemnych'],
-        ['Kond. podziemne',        'ilosc_kond_podziemnych'],
-        ['Geometria dachu',        'geometria_dachu'],
-      ].forEach(([label, key]) => {
-        html += fieldHtml(label, b[key]);
-      });
-      html += '</div>';
-    });
-  }
-
-  // Media
-  const media = pred.media || [];
-  if (media.length) {
-    html += '<div class="section-title">Media</div>';
-    media.forEach(m => { html += fieldHtml('', m); });
-  }
-
-  extractPanel.innerHTML = html;
-}
-
-function fieldHtml(label, value, cssClass = '') {
-  const v = value !== undefined && value !== null ? String(value) : '';
-  return `<div class="field-group">
-    ${label ? `<div class="field-label">${esc(label)}</div>` : ''}
-    <div class="field-value ${cssClass}">${esc(v) || '<span class="text-muted">—</span>'}</div>
-  </div>`;
-}
-
-function esc(s) {
-  if (s === null || s === undefined) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    lastPrediction = pred;
+    lastComparison = null;
+    editedKeys.clear();
+    setButtons(true);
+    accuracyBar.classList.add('hidden');
+    compareModeLabel.style.display = 'none';
+    renderGrid();
+  } catch (e) { alert('Extraction failed: ' + e.message); }
+  finally { hideSpinner(); }
 }
 
 // ============================================================
@@ -275,79 +210,185 @@ btnCompare.addEventListener('click', runCompare);
 async function runCompare() {
   if (!lastPrediction) return;
   const nr = lastPrediction.nr_wniosku;
-  if (!nr) { alert('Extraction result has no nr_wniosku — cannot compare.'); return; }
-
+  if (!nr) { alert('No nr_wniosku in extraction — cannot compare.'); return; }
   showSpinner('Comparing…');
   try {
-    const cmp = await api('POST', '/api/compare', {
+    lastComparison = await api('POST', '/api/compare', {
       nr_wniosku: nr,
       prediction: lastPrediction,
     });
-    renderComparison(cmp);
-    // Switch to compare tab
-    activateTab('compare');
-  } catch (e) {
-    alert('Compare failed: ' + e.message);
-  } finally {
-    hideSpinner();
-  }
+    renderGrid();
+    updateAccuracyBar(lastComparison);
+    compareModeLabel.style.display = '';
+  } catch (e) { alert('Compare failed: ' + e.message); }
+  finally { hideSpinner(); }
 }
 
-function renderComparison(cmp) {
-  const pct = Math.round((cmp.overall_accuracy || 0) * 100);
-  accuracyBarContainer.style.display = 'flex';
-  accuracyFill.style.width = pct + '%';
-  accuracyFill.style.background = pct >= 80 ? '#2d9a5f' : pct >= 50 ? '#f9a825' : '#e94560';
-  accuracyLabel.textContent = 'Accuracy:';
-  accuracyPct.textContent = pct + '%';
+chkCompareMode.addEventListener('change', renderGrid);
 
-  let html = '';
-  const flat = cmp.flat || {};
-  Object.entries(flat).forEach(([key, v]) => {
-    const cls = v.match ? 'match' : 'mismatch';
-    html += `<div class="field-group">
-      <div class="field-label">${esc(key)}</div>
-      <div class="field-value ${cls}">
-        <span style="color:#888;font-size:10px">PRED: </span>${esc(v.pred)}<br>
-        <span style="color:#888;font-size:10px">GOLD: </span>${esc(v.gold)}
-      </div>
-    </div>`;
+function updateAccuracyBar(cmp) {
+  const pct = Math.round((cmp.overall_accuracy || 0) * 100);
+  // count correct/total
+  let correct = 0, total = 0;
+  Object.values(cmp.flat || {}).forEach(v => { correct += v.match ? 1 : 0; total++; });
+  (cmp.budynki || []).forEach(b => Object.values(b).forEach(v => { correct += v.match ? 1 : 0; total++; }));
+  if (cmp.media) { correct += cmp.media.match ? 1 : 0; total++; }
+
+  accFill.style.width = pct + '%';
+  accFill.style.background = pct >= 80 ? '#2d9a5f' : pct >= 50 ? '#f9a825' : '#e94560';
+  accPct.textContent = pct + '%';
+  accCounts.textContent = `(${correct}/${total} fields)`;
+  accuracyBar.classList.remove('hidden');
+}
+
+// ============================================================
+// Grid rendering
+// ============================================================
+function renderGrid() {
+  if (!lastPrediction) return;
+  if (!schema) { gridContainer.innerHTML = '<p class="text-muted">Schema not loaded.</p>'; return; }
+
+  const showGold = lastComparison && chkCompareMode.checked;
+  const cmpFlat  = lastComparison?.flat  || {};
+  const cmpBlds  = lastComparison?.budynki || [];
+  const cmpMedia = lastComparison?.media;
+
+  // Needs-review banner
+  let banner = '';
+  if (lastPrediction.needs_review) {
+    banner = '<div class="needs-review-banner">⚠ Model flagged needs_review = true — verify all fields</div>';
+  }
+
+  // Build table
+  const colGroup = showGold
+    ? `<colgroup><col style="width:130px"><col><col></colgroup>`
+    : `<colgroup><col style="width:130px"><col></colgroup>`;
+
+  const headers = showGold
+    ? `<tr><th>Field</th><th>VLM Prediction (editable)</th><th>Ground Truth</th></tr>`
+    : `<tr><th>Field</th><th>VLM Prediction (editable)</th></tr>`;
+
+  let rows = '';
+
+  // --- Flat fields ---
+  rows += sectionRow('General', showGold);
+  schema.flat.forEach(f => {
+    const predVal = lastPrediction[f.key] ?? '';
+    const cmp     = cmpFlat[f.key];
+    const goldVal = cmp ? cmp.gold : null;
+    rows += fieldRow(f.label, f.key, null, predVal, goldVal, cmp?.match, showGold);
   });
 
-  const budynki = cmp.budynki || [];
-  budynki.forEach((bldCmp, i) => {
-    html += `<div class="section-title">Budynek ${i + 1}</div>`;
-    Object.entries(bldCmp).forEach(([key, v]) => {
-      const cls = v.match ? 'match' : 'mismatch';
-      html += `<div class="field-group">
-        <div class="field-label">${esc(key)}</div>
-        <div class="field-value ${cls}">
-          <span style="color:#888;font-size:10px">PRED: </span>${esc(v.pred)}<br>
-          <span style="color:#888;font-size:10px">GOLD: </span>${esc(v.gold)}
-        </div>
-      </div>`;
+  // --- Buildings ---
+  const buildings = lastPrediction.budynki || [];
+  buildings.forEach((bld, bi) => {
+    rows += sectionRow(`Building ${bi + 1} — ${esc(bld.oznaczenie || '')}`, showGold);
+    schema.building.forEach(f => {
+      const predVal = bld[f.key] ?? '';
+      const cmpB    = cmpBlds[bi];
+      const cmp     = cmpB?.[f.key];
+      const goldVal = cmp ? cmp.gold : null;
+      rows += fieldRow(f.label, f.key, bi, predVal, goldVal, cmp?.match, showGold);
     });
   });
+  // Button to add a building
+  rows += `<tr><td colspan="${showGold ? 3 : 2}" style="padding:4px 8px">
+    <button class="btn" style="font-size:11px" onclick="addBuilding()">+ Add building</button>
+  </td></tr>`;
 
-  const mediaCmp = cmp.media;
-  if (mediaCmp) {
-    const cls = mediaCmp.match ? 'match' : 'mismatch';
-    html += `<div class="section-title">Media</div>
-      <div class="field-group">
-        <div class="field-label">media</div>
-        <div class="field-value ${cls}">
-          <span style="color:#888;font-size:10px">PRED: </span>${esc((mediaCmp.pred || []).join(', '))}<br>
-          <span style="color:#888;font-size:10px">GOLD: </span>${esc((mediaCmp.gold || []).join(', '))}
-        </div>
-      </div>`;
-  }
+  // --- Media ---
+  rows += sectionRow('Media', showGold);
+  const media = lastPrediction.media || [];
+  media.forEach((m, mi) => {
+    const goldVal = cmpMedia ? (cmpMedia.gold[mi] ?? null) : null;
+    rows += fieldRow(`Media ${mi + 1}`, 'media', mi, m, goldVal, null, showGold);
+  });
+  rows += `<tr><td colspan="${showGold ? 3 : 2}" style="padding:4px 8px">
+    <button class="btn" style="font-size:11px" onclick="addMedia()">+ Add media entry</button>
+  </td></tr>`;
 
-  comparePanel.innerHTML = html;
+  gridContainer.innerHTML = banner +
+    `<table class="data-grid">${colGroup}<thead>${headers}</thead><tbody>${rows}</tbody></table>`;
+
+  // Attach change listeners to all textareas
+  gridContainer.querySelectorAll('textarea.cell-edit').forEach(el => {
+    el.addEventListener('input', onCellEdit);
+    el.addEventListener('keydown', autoResize);
+    autoResize.call(el);
+  });
 }
 
-function clearCompare() {
-  comparePanel.innerHTML = '<p class="text-muted" style="padding:8px">Run Extraction first, then click Compare.</p>';
-  accuracyBarContainer.style.display = 'none';
+function sectionRow(title, showGold) {
+  const span = showGold ? 3 : 2;
+  return `<tr class="section-row"><td colspan="${span}">${esc(title)}</td></tr>`;
+}
+
+function fieldRow(label, key, buildingIdx, predVal, goldVal, match, showGold) {
+  const dataKey  = buildingIdx !== null
+    ? (key === 'media' ? `media.${buildingIdx}` : `budynki.${buildingIdx}.${key}`)
+    : key;
+  const isEdited = editedKeys.has(dataKey);
+  const matchCls = isEdited ? 'edited' : (match === true ? 'match' : match === false ? 'mismatch' : '');
+
+  let goldCell = '';
+  if (showGold) {
+    const gv   = goldVal !== null && goldVal !== undefined ? String(goldVal) : '';
+    const gcls = gv ? '' : ' empty';
+    goldCell = `<td class="gold-cell"><span class="cell-gold${gcls}">${esc(gv) || '—'}</span></td>`;
+  }
+
+  return `<tr>
+    <td class="field-label-cell" title="${esc(label)}">${esc(label)}</td>
+    <td class="pred-cell"><textarea class="cell-edit ${matchCls}" data-key="${esc(dataKey)}" rows="1">${esc(String(predVal))}</textarea></td>
+    ${goldCell}
+  </tr>`;
+}
+
+function autoResize() {
+  this.style.height = 'auto';
+  this.style.height = this.scrollHeight + 'px';
+}
+
+function onCellEdit(e) {
+  const el  = e.target;
+  const key = el.dataset.key;
+  const val = el.value;
+  editedKeys.add(key);
+  el.classList.remove('match', 'mismatch');
+  el.classList.add('edited');
+
+  // Write back into lastPrediction
+  const parts = key.split('.');
+  if (parts.length === 1) {
+    lastPrediction[parts[0]] = val;
+  } else if (parts[0] === 'budynki') {
+    const bi = parseInt(parts[1]);
+    if (!lastPrediction.budynki) lastPrediction.budynki = [];
+    while (lastPrediction.budynki.length <= bi) lastPrediction.budynki.push({});
+    lastPrediction.budynki[bi][parts[2]] = val;
+  } else if (parts[0] === 'media') {
+    const mi = parseInt(parts[1]);
+    if (!lastPrediction.media) lastPrediction.media = [];
+    while (lastPrediction.media.length <= mi) lastPrediction.media.push('');
+    lastPrediction.media[mi] = val;
+  }
+}
+
+// ============================================================
+// Add rows
+// ============================================================
+function addBuilding() {
+  if (!lastPrediction) return;
+  if (!lastPrediction.budynki) lastPrediction.budynki = [];
+  lastPrediction.budynki.push({ oznaczenie: `${lastPrediction.budynki.length + 1}. Nowy` });
+  renderGrid();
+}
+
+function addMedia() {
+  if (!lastPrediction) return;
+  if (!lastPrediction.media) lastPrediction.media = [];
+  lastPrediction.media.push('');
+  renderGrid();
 }
 
 // ============================================================
@@ -358,74 +399,72 @@ btnSave.addEventListener('click', async () => {
   showSpinner('Saving…');
   try {
     const res = await api('POST', '/api/save', { prediction: lastPrediction });
-    alert('Saved to: ' + res.path);
-  } catch (e) {
-    alert('Save failed: ' + e.message);
-  } finally {
-    hideSpinner();
-  }
+    alert('Saved to:\n' + res.path);
+  } catch (e) { alert('Save failed: ' + e.message); }
+  finally { hideSpinner(); }
 });
 
 // ============================================================
 // Chat
 // ============================================================
-btnSend.addEventListener('click', sendChat);
-chatInput.addEventListener('keydown', e => {
+$('btn-send').addEventListener('click', sendChat);
+$('chat-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 });
 
 async function sendChat() {
-  const msg = chatInput.value.trim();
+  const input = $('chat-input');
+  const msg = input.value.trim();
   if (!msg) return;
   if (!currentDoc) { alert('Select a document first.'); return; }
-
   appendChat('user', msg);
-  chatInput.value = '';
-
+  input.value = '';
   showSpinner('Asking VLM…');
   try {
     const res = await api('POST', '/api/chat', {
       pdf_name: currentDoc.name,
       message: msg,
-      max_pages: parseInt(maxPagesInput.value) || 6,
+      max_pages: parseInt(maxPages.value) || 6,
     });
     appendChat('assistant', res.response || JSON.stringify(res));
-  } catch (e) {
-    appendChat('error', 'Error: ' + e.message);
-  } finally {
-    hideSpinner();
-  }
+  } catch (e) { appendChat('error', 'Error: ' + e.message); }
+  finally { hideSpinner(); }
 }
 
 function appendChat(role, text) {
+  const msgs = $('chat-messages');
   const div = document.createElement('div');
   div.className = `chat-msg ${role}`;
   div.textContent = text;
-  chatMessages.appendChild(div);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
 }
 
 // ============================================================
 // Tabs
 // ============================================================
 document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => activateTab(tab.dataset.tab));
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('.tab-panel').forEach(p =>
+      p.classList.toggle('active', p.id === `tab-${tab.dataset.tab}`));
+  });
 });
 
-function activateTab(name) {
-  document.querySelectorAll('.tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.tab === name);
-  });
-  document.querySelectorAll('.tab-panel').forEach(p => {
-    p.classList.toggle('active', p.id === `tab-${name}`);
-  });
+// ============================================================
+// Helpers
+// ============================================================
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ============================================================
 // Init
 // ============================================================
 (async () => {
-  await Promise.all([loadDocuments(), checkVlmHealth()]);
-  // Refresh VLM status every 30s
+  await Promise.all([loadDocuments(), checkVlmHealth(), loadSchema()]);
   setInterval(checkVlmHealth, 30_000);
 })();

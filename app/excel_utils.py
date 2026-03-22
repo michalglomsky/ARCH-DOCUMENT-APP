@@ -3,25 +3,26 @@ from __future__ import annotations
 """
 Excel read/write utilities for the app layer.
 
-- parse_labels(): read 1-2026-DANE.xlsx → dict keyed by nr_wniosku
-- save_result(): append an extraction result to EXTRACTED-DATA-TEMPLATE.xlsx
+- parse_labels(path): read labels xlsx → dict keyed by nr_wniosku
+- save_result(): append an extraction result to extracted_results.xlsx
 - compare_result(): field-by-field diff between VLM output and Excel ground truth
+- get_excel_schema(): return the field schema (for the UI grid)
 """
 
-import json
 import re
 from pathlib import Path
 from typing import Any
 
 import openpyxl
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font
 
-BACKUP_DIR = Path("/Users/michalglomski/Documents/ARCH-APP-Project-Files-Backup")
-EXCEL_LABELS = BACKUP_DIR / "1-2026-DANE.xlsx"
-
+BACKUP_DIR    = Path("/Users/michalglomski/Documents/ARCH-APP-Project-Files-Backup")
+EXCEL_LABELS  = BACKUP_DIR / "1-2026-DANE.xlsx"
+TEMPLATE_PATH = Path(__file__).parent.parent / "Project Files" / "EXTRACTED-DATA-TEMPLATE.xlsx"
+OUTPUT_PATH   = Path(__file__).parent / "extracted_results.xlsx"
 
 # ---------------------------------------------------------------------------
-# Column indices (0-based)
+# Column indices (0-based) — matches 1-2026-DANE.xlsx layout
 # ---------------------------------------------------------------------------
 COL_NR, COL_SPOSOB, COL_FLAGA = 0, 1, 2
 COL_NAZWA, COL_ADRES, COL_TEREN, COL_POW_CAL = 3, 4, 5, 6
@@ -43,11 +44,16 @@ def _is_header(row) -> bool:
     return _s(row[COL_NR]).lower() == "nr wniosku"
 
 
-def parse_labels() -> dict[str, dict]:
-    """Parse the master Excel into {nr_wniosku: record}."""
-    if not EXCEL_LABELS.exists():
+# ---------------------------------------------------------------------------
+# Parse labels Excel
+# ---------------------------------------------------------------------------
+
+def parse_labels(excel_path: Path | None = None) -> dict[str, dict]:
+    """Parse a labels Excel file into {nr_wniosku: record}."""
+    path = excel_path or EXCEL_LABELS
+    if not path.exists():
         return {}
-    wb = openpyxl.load_workbook(str(EXCEL_LABELS), read_only=True, data_only=True)
+    wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
     ws = wb.active
     records: dict[str, dict] = {}
     current = None
@@ -62,15 +68,15 @@ def parse_labels() -> dict[str, dict]:
             except ValueError:
                 continue
             current = {
-                "nr_wniosku": nr,
+                "nr_wniosku":        nr,
                 "sposob_wypelnienia": _s(row[COL_SPOSOB]),
-                "flaga_7_9": _s(row[COL_FLAGA]),
-                "nazwa_inwestycji": _s(row[COL_NAZWA]),
-                "adres": _s(row[COL_ADRES]),
-                "teren_inwestycji": _s(row[COL_TEREN]),
+                "flaga_7_9":          _s(row[COL_FLAGA]),
+                "nazwa_inwestycji":   _s(row[COL_NAZWA]),
+                "adres":              _s(row[COL_ADRES]),
+                "teren_inwestycji":   _s(row[COL_TEREN]),
                 "pow_zabudowy_calosc": _s(row[COL_POW_CAL]),
                 "budynki": [],
-                "media": [],
+                "media":   [],
             }
             records[nr] = current
             _add_building(current, row)
@@ -98,35 +104,72 @@ def _add_building(record: dict, row) -> None:
         return x
 
     record["budynki"].append({
-        "oznaczenie": label or raw,
-        "szerokosc_elewacji": val or raw,
-        "suma_pow_nadziemnych": v(COL_POW_NAD),
-        "suma_pow_podziemnych": v(COL_POW_POD),
-        "wys_gornej_krawedzi": v(COL_WYS_KRAW),
-        "wysokosc_zabudowy": v(COL_WYS_ZAB),
+        "oznaczenie":            label or raw,
+        "szerokosc_elewacji":    val or raw,
+        "suma_pow_nadziemnych":  v(COL_POW_NAD),
+        "suma_pow_podziemnych":  v(COL_POW_POD),
+        "wys_gornej_krawedzi":   v(COL_WYS_KRAW),
+        "wysokosc_zabudowy":     v(COL_WYS_ZAB),
         "ilosc_kond_nadziemnych": v(COL_KOND_NAD),
         "ilosc_kond_podziemnych": v(COL_KOND_POD),
-        "geometria_dachu": v(COL_DACH),
+        "geometria_dachu":       v(COL_DACH),
     })
 
 
 # ---------------------------------------------------------------------------
-# Save result to EXTRACTED-DATA-TEMPLATE.xlsx
+# Schema — field definitions for the UI grid
 # ---------------------------------------------------------------------------
 
-TEMPLATE_PATH = Path(__file__).parent.parent / "Project Files" / "EXTRACTED-DATA-TEMPLATE.xlsx"
-OUTPUT_PATH   = Path(__file__).parent / "extracted_results.xlsx"
+FLAT_FIELDS = [
+    ("nr_wniosku",          "Nr wniosku"),
+    ("sposob_wypelnienia",  "Sposób wypełnienia"),
+    ("flaga_7_9",           "Flaga 7.9"),
+    ("nazwa_inwestycji",    "Nazwa inwestycji"),
+    ("adres",               "Adres"),
+    ("teren_inwestycji",    "Teren inwestycji"),
+    ("pow_zabudowy_calosc", "Pow. zabudowy (całość)"),
+]
 
+BUILDING_FIELDS = [
+    ("oznaczenie",             "Oznaczenie"),
+    ("szerokosc_elewacji",     "Szerokość elewacji"),
+    ("suma_pow_nadziemnych",   "Suma pow. nadziemnych"),
+    ("suma_pow_podziemnych",   "Suma pow. podziemnych"),
+    ("wys_gornej_krawedzi",    "Wys. górnej krawędzi"),
+    ("wysokosc_zabudowy",      "Wysokość zabudowy"),
+    ("ilosc_kond_nadziemnych", "Kond. nadziemne"),
+    ("ilosc_kond_podziemnych", "Kond. podziemne"),
+    ("geometria_dachu",        "Geometria dachu"),
+]
+
+
+def get_excel_schema() -> dict:
+    """Return field schema used by the UI to render the editable grid."""
+    return {
+        "flat":     [{"key": k, "label": l} for k, l in FLAT_FIELDS],
+        "building": [{"key": k, "label": l} for k, l in BUILDING_FIELDS],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Save result to Excel
+# ---------------------------------------------------------------------------
 
 def save_result(pred: dict) -> str:
     """Append a prediction to the output Excel file. Returns the output path."""
-    # Load or create workbook
     if OUTPUT_PATH.exists():
         wb = openpyxl.load_workbook(str(OUTPUT_PATH))
         ws = wb.active
-    else:
+    elif TEMPLATE_PATH.exists():
         wb = openpyxl.load_workbook(str(TEMPLATE_PATH))
         ws = wb.active
+    else:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        headers = [l for _, l in FLAT_FIELDS] + [l for _, l in BUILDING_FIELDS[1:]] + ["Media"]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
 
     nr      = pred.get("nr_wniosku", "")
     sposob  = pred.get("sposob_wypelnienia", "")
@@ -140,25 +183,25 @@ def save_result(pred: dict) -> str:
 
     n_rows = max(len(budynki), len(media), 1)
     for i in range(n_rows):
-        b = budynki[i] if i < len(budynki) else {}
-        m = media[i]   if i < len(media)   else ""
+        b  = budynki[i] if i < len(budynki) else {}
+        m  = media[i]   if i < len(media)   else ""
         oz = b.get("oznaczenie", "") if b else ""
         ws.append([
-            nr     if i == 0 else "",
-            sposob if i == 0 else "",
-            flaga  if i == 0 else "",
-            nazwa  if i == 0 else "",
-            adres  if i == 0 else "",
-            teren  if i == 0 else "",
+            nr      if i == 0 else "",
+            sposob  if i == 0 else "",
+            flaga   if i == 0 else "",
+            nazwa   if i == 0 else "",
+            adres   if i == 0 else "",
+            teren   if i == 0 else "",
             pow_cal if i == 0 else "",
-            f"{oz}: {b.get('szerokosc_elewacji','')}"    if b else "",
-            f"{oz}: {b.get('suma_pow_nadziemnych','')}"  if b else "",
-            f"{oz}: {b.get('suma_pow_podziemnych','')}"  if b else "",
-            f"{oz}: {b.get('wys_gornej_krawedzi','')}"   if b else "",
-            f"{oz}: {b.get('wysokosc_zabudowy','')}"     if b else "",
-            f"{oz}: {b.get('ilosc_kond_nadziemnych','')}" if b else "",
-            f"{oz}: {b.get('ilosc_kond_podziemnych','')}" if b else "",
-            f"{oz}: {b.get('geometria_dachu','')}"        if b else "",
+            (f"{oz}: {b.get('szerokosc_elewacji','')}"     if b else ""),
+            (f"{oz}: {b.get('suma_pow_nadziemnych','')}"   if b else ""),
+            (f"{oz}: {b.get('suma_pow_podziemnych','')}"   if b else ""),
+            (f"{oz}: {b.get('wys_gornej_krawedzi','')}"    if b else ""),
+            (f"{oz}: {b.get('wysokosc_zabudowy','')}"      if b else ""),
+            (f"{oz}: {b.get('ilosc_kond_nadziemnych','')}" if b else ""),
+            (f"{oz}: {b.get('ilosc_kond_podziemnych','')}" if b else ""),
+            (f"{oz}: {b.get('geometria_dachu','')}"        if b else ""),
             m,
         ])
 
@@ -169,17 +212,6 @@ def save_result(pred: dict) -> str:
 # ---------------------------------------------------------------------------
 # Compare VLM prediction against Excel ground truth
 # ---------------------------------------------------------------------------
-
-FLAT_FIELDS = [
-    "nr_wniosku", "sposob_wypelnienia", "flaga_7_9",
-    "nazwa_inwestycji", "adres", "teren_inwestycji", "pow_zabudowy_calosc",
-]
-BUILDING_FIELDS = [
-    "szerokosc_elewacji", "suma_pow_nadziemnych", "suma_pow_podziemnych",
-    "wys_gornej_krawedzi", "wysokosc_zabudowy",
-    "ilosc_kond_nadziemnych", "ilosc_kond_podziemnych", "geometria_dachu",
-]
-
 
 def _norm(v: Any) -> str:
     return "" if v is None else str(v).strip().lower()
@@ -198,10 +230,10 @@ def compare_result(pred: dict, gold: dict) -> dict:
     result: dict[str, Any] = {"flat": {}, "budynki": [], "media": {}}
     correct = total = 0
 
-    for f in FLAT_FIELDS:
-        p, g = _norm(pred.get(f)), _norm(gold.get(f))
+    for key, _ in FLAT_FIELDS:
+        p, g = _norm(pred.get(key)), _norm(gold.get(key))
         match = p == g
-        result["flat"][f] = {"pred": pred.get(f, ""), "gold": gold.get(f, ""), "match": match}
+        result["flat"][key] = {"pred": pred.get(key, ""), "gold": gold.get(key, ""), "match": match}
         correct += int(match); total += 1
 
     pred_blds = pred.get("budynki") or []
@@ -210,10 +242,10 @@ def compare_result(pred: dict, gold: dict) -> dict:
         pb = pred_blds[i] if i < len(pred_blds) else {}
         gb = gold_blds[i] if i < len(gold_blds) else {}
         bld_cmp = {}
-        for f in BUILDING_FIELDS:
-            p, g = _norm(pb.get(f)), _norm(gb.get(f))
+        for key, _ in BUILDING_FIELDS:
+            p, g = _norm(pb.get(key)), _norm(gb.get(key))
             match = p == g
-            bld_cmp[f] = {"pred": pb.get(f, ""), "gold": gb.get(f, ""), "match": match}
+            bld_cmp[key] = {"pred": pb.get(key, ""), "gold": gb.get(key, ""), "match": match}
             correct += int(match); total += 1
         result["budynki"].append(bld_cmp)
 
