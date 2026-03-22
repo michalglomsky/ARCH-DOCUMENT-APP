@@ -20,9 +20,13 @@ finetune_qwen_vl_qa/out/
 eval_*.json
 eval_*.xlsx
 
-# Project Files — PDFs are large binaries, exclude them
-# but keep the Excel label file tracked
-"Project Files"/*.pdf
+# Project Files — ignore everything except the template
+Project Files/*.pdf
+Project Files/*.txt
+Project Files/*.xlsx
+!Project Files/EXTRACTED-DATA-TEMPLATE.xlsx
+Project Files/output/
+Project Files/redacted/
 
 # macOS
 .DS_Store
