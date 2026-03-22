@@ -37,6 +37,7 @@
   <div class="setting-row">
     <label>PDF directory</label>
     <input id="cfg-pdf-dir" type="text" placeholder="/path/to/pdfs">
+    <button class="btn" id="btn-browse-pdf" title="Browse filesystem">📁 Browse</button>
   </div>
   <div class="setting-row">
     <label>Labels Excel (ground truth)</label>
@@ -67,13 +68,12 @@
 
     <div id="tabs">
       <div class="tab active" data-tab="extract">Extraction</div>
+      <div class="tab" data-tab="batch">Batch</div>
       <div class="tab" data-tab="chat">Chat</div>
     </div>
 
-    <!-- EXTRACTION TAB -->
+    <!-- ---- EXTRACTION TAB ---- -->
     <div id="tab-extract" class="tab-panel active">
-
-      <!-- Action bar -->
       <div id="action-bar">
         <button class="btn primary" id="btn-extract">⚡ Extract</button>
         <button class="btn" id="btn-compare" disabled>⚖ Compare</button>
@@ -84,26 +84,41 @@
           <input type="checkbox" id="chk-compare-mode" checked> Show ground truth
         </label>
       </div>
-
-      <!-- Accuracy bar (shown after compare) -->
       <div id="accuracy-bar" class="hidden">
         <span>Accuracy</span>
         <div class="acc-track"><div id="acc-fill"></div></div>
         <span id="acc-pct">—</span>
         <span id="acc-counts" style="font-size:10px;color:#888"></span>
       </div>
-
-      <!-- Editable grid -->
       <div id="grid-container">
-        <p class="text-muted" style="padding:16px">Select a document and click Extract.</p>
+        <p class="text-muted">Select a document and click ⚡ Extract.</p>
       </div>
-
     </div>
 
-    <!-- CHAT TAB -->
+    <!-- ---- BATCH TAB ---- -->
+    <div id="tab-batch" class="tab-panel">
+      <div class="batch-toolbar">
+        <button class="btn primary" id="btn-batch-extract">⚡ Extract Selected</button>
+        <button class="btn" id="btn-batch-save-all" disabled>💾 Save All to Excel</button>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-select-all">☑ All</button>
+        <button class="btn" id="btn-select-none">☐ None</button>
+        <span id="batch-sel-count" style="font-size:11px;color:#888;margin-left:6px"></span>
+      </div>
+      <div id="batch-progress" class="hidden">
+        <div class="bp-label" id="bp-label">—</div>
+        <div class="bp-track"><div id="bp-fill"></div></div>
+        <span id="bp-pct"></span>
+      </div>
+      <div id="batch-list-container">
+        <p class="text-muted">Loading documents…</p>
+      </div>
+    </div>
+
+    <!-- ---- CHAT TAB ---- -->
     <div id="tab-chat" class="tab-panel">
       <div id="chat-messages">
-        <p class="text-muted" style="padding:8px">Ask anything about the current document.</p>
+        <p class="text-muted">Ask anything about the current document.</p>
       </div>
       <div id="chat-input-row">
         <textarea id="chat-input" placeholder="Type a question… (Enter to send, Shift+Enter for newline)" rows="1"></textarea>
@@ -111,6 +126,26 @@
       </div>
     </div>
 
+  </div><!-- /data-pane -->
+</div><!-- /main -->
+
+<!-- ===== DIRECTORY BROWSER MODAL ===== -->
+<div id="dir-modal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Choose PDF Folder</span>
+      <button class="icon-btn" id="btn-modal-close">✕</button>
+    </div>
+    <div class="modal-breadcrumb" id="modal-breadcrumb"></div>
+    <div class="modal-body" id="modal-body">
+      <p class="text-muted">Loading…</p>
+    </div>
+    <div class="modal-footer">
+      <span id="modal-pdf-count" style="font-size:11px;color:#888"></span>
+      <span class="spacer"></span>
+      <button class="btn primary" id="btn-modal-select">Use this folder</button>
+      <button class="btn" id="btn-modal-cancel">Cancel</button>
+    </div>
   </div>
 </div>
 

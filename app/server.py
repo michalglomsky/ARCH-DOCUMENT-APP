@@ -94,6 +94,38 @@ def set_config(body: dict):
 
 
 # ---------------------------------------------------------------------------
+# Filesystem browser (for directory picker)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/browse")
+def browse(path: str = "/"):
+    """
+    List subdirectories and PDF count at the given path.
+    Used by the directory picker in the UI.
+    """
+    p = Path(path).expanduser().resolve()
+    if not p.exists() or not p.is_dir():
+        raise HTTPException(404, f"Directory not found: {path}")
+    try:
+        entries = list(p.iterdir())
+    except PermissionError:
+        raise HTTPException(403, f"Permission denied: {path}")
+
+    dirs = sorted(
+        [e for e in entries if e.is_dir() and not e.name.startswith(".")],
+        key=lambda x: x.name.lower(),
+    )
+    pdf_count = sum(1 for e in entries if e.suffix.lower() == ".pdf")
+
+    return {
+        "path":      str(p),
+        "parent":    str(p.parent) if p.parent != p else None,
+        "dirs":      [{"name": d.name, "path": str(d)} for d in dirs],
+        "pdf_count": pdf_count,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Document listing
 # ---------------------------------------------------------------------------
 
