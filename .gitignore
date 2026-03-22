@@ -1,23 +1,28 @@
-# .gitignore
-
-# Ignore the virtual environment folder
-venv/
-
-# Ignore Python cache files
+# Python
 __pycache__/
+*.py[cod]
+.venv*/
+*.egg-info/
 
-# CRITICAL: Ignore the .env file containing secrets
-.env
+# Rendered images (large, reproducible by re-running prepare scripts)
+finetune_qwen_vl_pytorch/data/images/
+finetune_qwen_vl_qa/data/images/
 
-# CRITICAL: Also ignore any raw credential files you might have in the project
-*.json
+# Generated JSONL data (reproducible)
+finetune_qwen_vl_pytorch/data/
+finetune_qwen_vl_qa/data/
 
-# Google cloud configuration
-config.json
+# Model checkpoints and LoRA adapters (too large for git)
+finetune_qwen_vl_pytorch/out/
+finetune_qwen_vl_qa/out/
 
-# Ignore data and output folders
-DOKUMENTY SAMPLE/
-edited/
-processed_pdfs/
-test_files/
-output/
+# Evaluation outputs
+eval_*.json
+eval_*.xlsx
+
+# Project Files — PDFs are large binaries, exclude them
+# but keep the Excel label file tracked
+"Project Files"/*.pdf
+
+# macOS
+.DS_Store
