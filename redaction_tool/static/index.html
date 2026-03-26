@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Redaction Tool</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.02em; }
+    header .subtitle { font-size: 0.78rem; color: #aab; margin-top: 1px; }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: #e74c3c;
+      color: #fff;
+      letter-spacing: 0.04em;
+    }
+
+    main { max-width: 900px; margin: 32px auto; padding: 0 20px 60px; }
+
+    /* ---- Upload zone ---- */
+    .upload-zone {
+      background: #fff;
+      border: 2px dashed #c5cae9;
+      border-radius: 12px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: #5c6bc0;
+      background: #f3f4fb;
+    }
+    .upload-zone input[type=file] { display: none; }
+    .upload-zone .icon { font-size: 2.4rem; margin-bottom: 12px; }
+    .upload-zone p { color: #666; font-size: 0.92rem; }
+    .upload-zone p strong { color: #333; }
+    .upload-zone .file-name {
+      margin-top: 14px;
+      font-size: 0.88rem;
+      color: #5c6bc0;
+      font-weight: 600;
+      word-break: break-all;
+    }
+
+    /* ---- Action buttons ---- */
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 10px 22px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn:not(:disabled):hover { opacity: 0.88; }
+    .btn:not(:disabled):active { transform: scale(0.97); }
+    .btn-preview { background: #5c6bc0; color: #fff; }
+    .btn-redact  { background: #e74c3c; color: #fff; }
+    .btn-reset   { background: #e8e8e8; color: #444; }
+
+    /* ---- Status bar ---- */
+    .status-bar {
+      margin-top: 16px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 500;
+      display: none;
+    }
+    .status-bar.info    { background: #e3f2fd; color: #1565c0; display: block; }
+    .status-bar.success { background: #e8f5e9; color: #2e7d32; display: block; }
+    .status-bar.error   { background: #ffebee; color: #c62828; display: block; }
+    .status-bar.loading { background: #fff3e0; color: #e65100; display: block; }
+
+    /* ---- Preview panel ---- */
+    #preview-panel { margin-top: 28px; }
+    #preview-panel h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #333;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .summary-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .summary-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 14px 20px;
+      flex: 1;
+      min-width: 140px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    }
+    .summary-card .label { font-size: 0.75rem; color: #888; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+    .summary-card .value { font-size: 1.5rem; font-weight: 700; color: #1a1a2e; margin-top: 4px; }
+    .summary-card .value.red { color: #e74c3c; }
+
+    .pages-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .page-card {
+      background: #fff;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    .page-card img {
+      width: 100%;
+      display: block;
+      border-bottom: 1px solid #eee;
+    }
+    .page-card .page-meta {
+      padding: 10px 14px;
+      font-size: 0.8rem;
+      color: #555;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .page-card .page-num { font-weight: 600; color: #333; }
+    .page-type-tag {
+      background: #e8eaf6;
+      color: #3949ab;
+      border-radius: 6px;
+      padding: 2px 7px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      max-width: 130px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .redaction-badge {
+      background: #e74c3c;
+      color: #fff;
+      border-radius: 6px;
+      padding: 2px 7px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .redaction-badge.none {
+      background: #eee;
+      color: #999;
+    }
+
+    /* page thumbnails are clickable */
+    .page-card img { cursor: zoom-in; }
+
+    /* ---- Page removal toggle ---- */
+    .page-card.marked-for-removal {
+      outline: 3px solid #e74c3c;
+    }
+    .page-card.marked-for-removal img {
+      opacity: 0.45;
+    }
+    .btn-remove-page {
+      background: none;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      cursor: pointer;
+      color: #777;
+      transition: background .15s, color .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    .btn-remove-page:hover { background: #fff0f0; border-color: #e74c3c; color: #e74c3c; }
+    .page-card.marked-for-removal .btn-remove-page {
+      background: #e74c3c;
+      border-color: #e74c3c;
+      color: #fff;
+    }
+
+    /* ---- Lightbox ---- */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.85);
+      z-index: 1000;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    #lightbox.open { display: flex; }
+
+    #lightbox-toolbar {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: rgba(0,0,0,.6);
+      color: #fff;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+    #lightbox-title { flex: 1; font-weight: 600; }
+    .lb-btn {
+      background: rgba(255,255,255,.15);
+      border: none;
+      color: #fff;
+      border-radius: 6px;
+      padding: 5px 12px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      transition: background .15s;
+    }
+    .lb-btn:hover { background: rgba(255,255,255,.28); }
+    #lb-zoom-label { min-width: 44px; text-align: center; }
+
+    #lightbox-scroll {
+      flex: 1;
+      overflow: auto;
+      width: 100%;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 20px;
+      cursor: grab;
+    }
+    #lightbox-scroll.grabbing { cursor: grabbing; }
+
+    #lightbox-img {
+      display: block;
+      transform-origin: top center;
+      transition: transform .1s;
+      max-width: none;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>PDF Redaction Tool <span class="badge">LOCAL</span></h1>
+    <div class="subtitle">Preview and apply redactions — nothing leaves your machine</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Upload zone -->
+  <div class="upload-zone" id="upload-zone">
+    <input type="file" id="file-input" accept=".pdf" />
+    <div class="icon">📄</div>
+    <p><strong>Click to select</strong> or drag & drop a PDF file</p>
+    <div class="file-name" id="file-name"></div>
+  </div>
+
+  <!-- Actions -->
+  <div class="actions">
+    <button class="btn btn-preview" id="btn-preview" disabled>
+      🔍 Preview Redactions
+    </button>
+    <button class="btn btn-redact" id="btn-redact" disabled>
+      ✂️ Redact &amp; Download
+    </button>
+    <button class="btn btn-reset" id="btn-reset" style="display:none">
+      ↺ Clear
+    </button>
+  </div>
+
+  <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.85rem;color:#555;cursor:pointer;">
+    <input type="checkbox" id="chk-ocr-boxes" />
+    Show OCR text detection boxes <span style="color:#888;font-size:0.78rem;">(calibration mode — blue outlines show all detected text)</span>
+  </label>
+
+  <div class="status-bar" id="status-bar"></div>
+
+  <!-- Preview results -->
+  <div id="preview-panel" style="display:none">
+    <h2>Preview <span id="preview-filename" style="color:#888;font-weight:400;font-size:0.88rem;"></span></h2>
+
+    <div class="summary-row" id="summary-row"></div>
+    <div class="pages-grid" id="pages-grid"></div>
+  </div>
+
+</main>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <div id="lightbox-toolbar">
+    <span id="lightbox-title">Page 1</span>
+    <button class="lb-btn" id="lb-zoom-out">－</button>
+    <span id="lb-zoom-label">100%</span>
+    <button class="lb-btn" id="lb-zoom-in">＋</button>
+    <button class="lb-btn" id="lb-zoom-fit">Fit</button>
+    <button class="lb-btn" id="lb-zoom-100">100%</button>
+    <button class="lb-btn" id="lb-prev">‹ Prev</button>
+    <button class="lb-btn" id="lb-next">Next ›</button>
+    <button class="lb-btn" id="lb-close">✕ Close</button>
+  </div>
+  <div id="lightbox-scroll">
+    <img id="lightbox-img" src="" alt="Page preview" draggable="false" />
+  </div>
+</div>
+
+<script>
+  const uploadZone  = document.getElementById('upload-zone');
+  const fileInput   = document.getElementById('file-input');
+  const fileNameEl  = document.getElementById('file-name');
+  const btnPreview  = document.getElementById('btn-preview');
+  const btnRedact   = document.getElementById('btn-redact');
+  const btnReset    = document.getElementById('btn-reset');
+  const statusBar   = document.getElementById('status-bar');
+  const previewPanel = document.getElementById('preview-panel');
+  const summaryRow  = document.getElementById('summary-row');
+  const pagesGrid   = document.getElementById('pages-grid');
+  const previewFilename = document.getElementById('preview-filename');
+
+  let selectedFile = null;
+  let pagesToRemove = new Set();
+
+  // ---- File selection ----
+  uploadZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => handleFileSelect(fileInput.files[0]));
+
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.name.endsWith('.pdf')) handleFileSelect(f);
+    else setStatus('error', 'Please drop a PDF file.');
+  });
+
+  function handleFileSelect(file) {
+    if (!file) return;
+    selectedFile = file;
+    fileNameEl.textContent = file.name;
+    btnPreview.disabled = false;
+    btnRedact.disabled  = false;
+    btnReset.style.display = 'inline-flex';
+    clearPreview();
+    setStatus('info', `File selected: ${file.name}  (${(file.size / 1024).toFixed(0)} KB)`);
+  }
+
+  btnReset.addEventListener('click', () => {
+    selectedFile = null;
+    fileInput.value = '';
+    fileNameEl.textContent = '';
+    btnPreview.disabled = true;
+    btnRedact.disabled  = true;
+    btnReset.style.display = 'none';
+    clearPreview();
+    clearStatus();
+  });
+
+  // ---- Status helpers ----
+  function setStatus(type, msg) {
+    statusBar.className = `status-bar ${type}`;
+    statusBar.textContent = msg;
+  }
+  function clearStatus() {
+    statusBar.className = 'status-bar';
+    statusBar.textContent = '';
+  }
+  function clearPreview() {
+    previewPanel.style.display = 'none';
+    summaryRow.innerHTML = '';
+    pagesGrid.innerHTML = '';
+    previewFilename.textContent = '';
+    pagesToRemove.clear();
+  }
+
+  // ---- Preview ----
+  btnPreview.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    setStatus('loading', '⏳ Running OCR and detecting redaction zones … this may take a moment.');
+    btnPreview.disabled = true;
+    btnRedact.disabled  = true;
+
+    try {
+      const showOcr = document.getElementById('chk-ocr-boxes').checked;
+      const form = new FormData();
+      form.append('file', selectedFile);
+      const res = await fetch(`/preview?show_ocr_boxes=${showOcr}`, { method: 'POST', body: form });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      const data = await res.json();
+      renderPreview(data);
+      setStatus('success', `✓ Preview ready — ${data.pages.length} page(s) analysed.`);
+    } catch (e) {
+      setStatus('error', `Error: ${e.message}`);
+    } finally {
+      btnPreview.disabled = false;
+      btnRedact.disabled  = false;
+    }
+  });
+
+  function renderPreview(data) {
+    previewPanel.style.display = 'block';
+    previewFilename.textContent = `— ${data.filename}`;
+    summaryRow.innerHTML = '';
+    pagesGrid.innerHTML = '';
+    lbPages = [];
+    lbZoom  = 1.0;
+
+    const totalRedactions = data.pages.reduce((s, p) => s + p.redaction_count, 0);
+    const pagesWithRedactions = data.pages.filter(p => p.redaction_count > 0).length;
+
+    const summaryCards = [
+      { label: 'Pages', value: data.pages.length, red: false },
+      { label: 'Pages redacted', value: pagesWithRedactions, red: pagesWithRedactions > 0 },
+      { label: 'Total zones', value: totalRedactions, red: totalRedactions > 0 },
+    ];
+    summaryCards.forEach(c => {
+      summaryRow.insertAdjacentHTML('beforeend', `
+        <div class="summary-card">
+          <div class="label">${c.label}</div>
+          <div class="value ${c.red && c.value > 0 ? 'red' : ''}">${c.value}</div>
+        </div>`);
+    });
+
+    data.pages.forEach(p => {
+      const matchLines = (p.matches || []).map(m => {
+        if (m.type === 'text_regex') return `<li>📧 <b>${m.pattern}</b>: "${m.text}"</li>`;
+        if (m.type === 'anchor')     return `<li>🔖 <b>${m.note || 'anchor'}</b> (found: "${m.anchor}")</li>`;
+        if (m.type === 'fixed')      return `<li>📌 Fixed: ${m.note}</li>`;
+        return '';
+      }).join('');
+
+      const card = document.createElement('div');
+      card.className = 'page-card';
+      card.dataset.pageIndex = p.page_index;
+      card.innerHTML = `
+        <img src="data:image/jpeg;base64,${p.image_b64}" alt="Page ${p.page_index + 1}" loading="lazy" />
+        <div class="page-meta">
+          <span class="page-num">Page ${p.page_index + 1}</span>
+          <span class="redaction-badge ${p.redaction_count === 0 ? 'none' : ''}">
+            ${p.redaction_count === 0 ? 'no redactions' : `${p.redaction_count} zone${p.redaction_count > 1 ? 's' : ''}`}
+          </span>
+          <button class="btn-remove-page" title="Toggle page removal">✕ Remove</button>
+        </div>
+        ${matchLines ? `<ul style="font-size:0.75rem;color:#555;padding:8px 14px 10px;margin:0;list-style:none;border-top:1px solid #f0f0f0;line-height:1.7">${matchLines}</ul>` : ''}
+      `;
+      pagesGrid.appendChild(card);
+
+      // Wire remove toggle
+      card.querySelector('.btn-remove-page').addEventListener('click', e => {
+        e.stopPropagation();
+        const pi = p.page_index;
+        if (pagesToRemove.has(pi)) {
+          pagesToRemove.delete(pi);
+          card.classList.remove('marked-for-removal');
+          e.currentTarget.textContent = '✕ Remove';
+        } else {
+          pagesToRemove.add(pi);
+          card.classList.add('marked-for-removal');
+          e.currentTarget.textContent = '↩ Keep';
+        }
+      });
+
+      // Wire lightbox
+      const idx = lbPages.length;
+      lbPages.push({ src: `data:image/jpeg;base64,${p.image_b64}`, title: `Page ${p.page_index + 1} of ${data.pages.length} — ${data.filename}` });
+      card.querySelector('img').addEventListener('click', () => lbOpen(idx));
+    });
+  }
+
+  // ---- Redact & Download ----
+  btnRedact.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    const removeCount = pagesToRemove.size;
+    const removeNote = removeCount > 0
+      ? `\n\nAlso removing ${removeCount} page(s): ${[...pagesToRemove].sort((a,b)=>a-b).map(i=>i+1).join(', ')}.`
+      : '';
+    const confirmed = confirm(
+      `Apply redactions to "${selectedFile.name}"?\n\nThis will permanently remove the sensitive content from the PDF.${removeNote}`
+    );
+    if (!confirmed) return;
+
+    setStatus('loading', '⏳ Applying redactions … please wait.');
+    btnPreview.disabled = true;
+    btnRedact.disabled  = true;
+
+    try {
+      const form = new FormData();
+      form.append('file', selectedFile);
+      if (pagesToRemove.size > 0) {
+        form.append('pages_to_remove', [...pagesToRemove].join(','));
+      }
+      const res = await fetch('/redact', { method: 'POST', body: form });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      const blob = await res.blob();
+      const stem = selectedFile.name.replace(/\.pdf$/i, '');
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `${stem}.redacted.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setStatus('success', `✓ Redacted PDF downloaded as "${stem}.redacted.pdf".`);
+    } catch (e) {
+      setStatus('error', `Error: ${e.message}`);
+    } finally {
+      btnPreview.disabled = false;
+      btnRedact.disabled  = false;
+    }
+  });
+
+  // ---- Lightbox ----
+  const lightbox      = document.getElementById('lightbox');
+  const lbImg         = document.getElementById('lightbox-img');
+  const lbTitle       = document.getElementById('lightbox-title');
+  const lbZoomLabel   = document.getElementById('lb-zoom-label');
+  const lbScroll      = document.getElementById('lightbox-scroll');
+
+  let lbPages   = [];   // array of {src, title} built when preview renders
+  let lbIndex   = 0;
+  let lbZoom    = 1.0;
+  const ZOOM_STEP = 0.2;
+  const ZOOM_MIN  = 0.2;
+  const ZOOM_MAX  = 4.0;
+
+  function lbOpen(index) {
+    lbIndex = index;
+    lbShow();
+    lightbox.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function lbClose() {
+    lightbox.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function lbShow() {
+    const p = lbPages[lbIndex];
+    lbImg.src   = p.src;
+    lbTitle.textContent = p.title;
+    lbApplyZoom();
+    lbScroll.scrollTo(0, 0);
+    document.getElementById('lb-prev').disabled = lbIndex === 0;
+    document.getElementById('lb-next').disabled = lbIndex === lbPages.length - 1;
+  }
+
+  function lbApplyZoom() {
+    lbImg.style.transform = `scale(${lbZoom})`;
+    lbZoomLabel.textContent = Math.round(lbZoom * 100) + '%';
+  }
+
+  function lbSetZoom(z) {
+    lbZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+    lbApplyZoom();
+  }
+
+  document.getElementById('lb-zoom-in').addEventListener('click',  () => lbSetZoom(lbZoom + ZOOM_STEP));
+  document.getElementById('lb-zoom-out').addEventListener('click', () => lbSetZoom(lbZoom - ZOOM_STEP));
+  document.getElementById('lb-zoom-100').addEventListener('click', () => lbSetZoom(1.0));
+  document.getElementById('lb-zoom-fit').addEventListener('click', () => {
+    const fitZoom = (lbScroll.clientWidth - 40) / lbImg.naturalWidth;
+    lbSetZoom(fitZoom);
+  });
+  document.getElementById('lb-prev').addEventListener('click', () => { if (lbIndex > 0)              { lbIndex--; lbShow(); } });
+  document.getElementById('lb-next').addEventListener('click', () => { if (lbIndex < lbPages.length-1) { lbIndex++; lbShow(); } });
+  document.getElementById('lb-close').addEventListener('click', lbClose);
+
+  // Close on backdrop click
+  lightbox.addEventListener('click', e => { if (e.target === lightbox || e.target === lbScroll) lbClose(); });
+
+  // Keyboard navigation
+  document.addEventListener('keydown', e => {
+    if (!lightbox.classList.contains('open')) return;
+    if (e.key === 'Escape')      lbClose();
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown')  { if (lbIndex < lbPages.length-1) { lbIndex++; lbShow(); } }
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')    { if (lbIndex > 0)                { lbIndex--; lbShow(); } }
+    if (e.key === '+' || e.key === '=') lbSetZoom(lbZoom + ZOOM_STEP);
+    if (e.key === '-')                  lbSetZoom(lbZoom - ZOOM_STEP);
+  });
+
+  // Mouse-wheel zoom
+  lbScroll.addEventListener('wheel', e => {
+    e.preventDefault();
+    lbSetZoom(lbZoom + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+  }, { passive: false });
+
+  // Drag-to-pan inside lightbox
+  let dragStart = null;
+  let scrollStart = null;
+  lbScroll.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    dragStart  = { x: e.clientX, y: e.clientY };
+    scrollStart = { left: lbScroll.scrollLeft, top: lbScroll.scrollTop };
+    lbScroll.classList.add('grabbing');
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragStart) return;
+    lbScroll.scrollLeft = scrollStart.left - (e.clientX - dragStart.x);
+    lbScroll.scrollTop  = scrollStart.top  - (e.clientY - dragStart.y);
+  });
+  document.addEventListener('mouseup', () => {
+    dragStart = null;
+    lbScroll.classList.remove('grabbing');
+  });
+
+</script>
+</body>
+</html>

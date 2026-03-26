@@ -24,9 +24,22 @@ eval_*.xlsx
 Project Files/*.pdf
 Project Files/*.txt
 Project Files/*.xlsx
+Project Files/**/*.pdf
+Project Files/**/*.xlsx
 !Project Files/EXTRACTED-DATA-TEMPLATE.xlsx
 Project Files/output/
 Project Files/redacted/
+
+# Documents and spreadsheets — never commit these anywhere
+*.pdf
+*.xlsx
+*.xls
+*.doc
+*.docx
+!Project Files/EXTRACTED-DATA-TEMPLATE.xlsx
+
+# Logs
+logs/
 
 # macOS
 .DS_Store

@@ -1,0 +1,1856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manual Redaction Tool</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    header { background: #1a1a2e; color: #fff; padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+    header h1 { font-size: 1rem; font-weight: 600; }
+    .badge { background: #e67e22; color: #fff; font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 8px; letter-spacing: .04em; }
+
+    .workspace { display: flex; flex: 1; overflow: hidden; }
+
+    /* Sidebar */
+    .sidebar { width: 260px; background: #fff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+    .sidebar-section { padding: 10px 12px 9px; border-bottom: 1px solid #f0f0f0; }
+    .sidebar-section label { font-size: 0.72rem; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; display: block; margin-bottom: 5px; }
+    .input-row { display: flex; gap: 5px; }
+    .input-row input { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 5px 8px; font-size: 0.8rem; min-width: 0; }
+    .input-row input:focus { outline: none; border-color: #e67e22; }
+
+    .file-list-head { padding: 8px 12px 6px; border-bottom: 1px solid #f0f0f0; font-size: 0.72rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; }
+    .file-list { flex: 1; overflow-y: auto; padding: 5px; }
+    .file-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; font-size: 0.78rem; cursor: pointer; transition: background .1s; }
+    .file-item:hover { background: #f9fafb; }
+    .file-item.active { background: #e67e22; color: #fff; font-weight: 600; }
+    .file-item.active .file-status { background: rgba(255,255,255,0.25); color: #fff; }
+    .file-item.active .fname { color: #fff; }
+    .file-item .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+    .file-item .file-remove { background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 0.78rem; padding: 0 2px; flex-shrink: 0; line-height: 1; }
+    .file-item:hover .file-remove { color: #6b7280; }
+    .file-item.active .file-remove { color: rgba(255,255,255,0.7); }
+    .file-status { font-size: 0.65rem; font-weight: 700; padding: 1px 5px; border-radius: 8px; white-space: nowrap; flex-shrink: 0; }
+    .file-status.pending { background: #fef3c7; color: #92400e; }
+    .file-status.done    { background: #d1fae5; color: #065f46; }
+    .file-status.error   { background: #fee2e2; color: #991b1b; }
+
+    /* Buttons */
+    .btn { border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: opacity .15s, background .15s; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .btn:disabled { opacity: .38; cursor: not-allowed; }
+    .btn:not(:disabled):hover { opacity: .85; }
+    .btn-primary   { background: #e67e22; color: #fff; }
+    .btn-secondary { background: #6366f1; color: #fff; }
+    .btn-danger    { background: #ef4444; color: #fff; }
+    .btn-ghost     { background: #f3f4f6; color: #374151; }
+    .btn-sm        { padding: 3px 8px; font-size: 0.73rem; }
+    .btn-mode      { background: #f3f4f6; color: #374151; }
+    .btn-mode.active { background: #1a1a2e; color: #fff; }
+
+    /* Template dropdown */
+    .dropdown { display: inline-flex; }
+    .dropdown-menu { position: fixed; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); min-width: 210px; z-index: 2000; overflow: hidden; }
+    .dropdown-menu[hidden] { display: none; }
+    .dropdown-item { padding: 9px 14px; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background .1s; color: #1a1a2e; }
+    .dropdown-item:hover { background: #f3f4f6; }
+    .dropdown-item.danger { color: #dc2626; }
+    .dropdown-item.danger:hover { background: #fef2f2; }
+    .dropdown-item.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+    .dropdown-sep { height: 1px; background: #f0f0f0; margin: 3px 0; }
+    .tmpl-badge { font-size: 0.65rem; background: #6366f1; color: #fff; border-radius: 8px; padding: 1px 6px; margin-left: 4px; }
+
+    /* Editor area */
+    .editor-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #e5e7eb; }
+    .editor-toolbar { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 6px 12px; display: flex; flex-direction: column; gap: 5px; flex-shrink: 0; }
+    .toolbar-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .toolbar-sep { width: 1px; height: 20px; background: #e5e7eb; flex-shrink: 0; }
+    .doc-name { font-size: 0.82rem; font-weight: 600; color: #374151; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .page-nav { display: flex; align-items: center; gap: 5px; font-size: 0.8rem; }
+    .page-nav button { background: #f3f4f6; border: none; border-radius: 5px; padding: 3px 9px; cursor: pointer; font-weight: 600; font-size: 0.8rem; }
+    .page-nav button:disabled { opacity: .38; }
+
+    .zoom-row { display: flex; align-items: center; gap: 4px; }
+    .zoom-btn { background: #f3f4f6; border: none; border-radius: 5px; padding: 3px 9px; cursor: pointer; font-size: 0.8rem; font-weight: 700; }
+    .zoom-btn:hover { background: #e5e7eb; }
+    .zoom-label { font-size: 0.78rem; font-weight: 600; color: #374151; min-width: 42px; text-align: center; }
+    .zoom-preset { background: #f3f4f6; border: none; border-radius: 5px; padding: 3px 7px; cursor: pointer; font-size: 0.73rem; font-weight: 600; color: #6b7280; }
+    .zoom-preset:hover { background: #e5e7eb; color: #111; }
+
+    .canvas-scroll { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 24px; }
+    .canvas-wrap { position: relative; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,.2); }
+    .canvas-wrap img.page-img { display: block; max-width: none; }
+    .canvas-wrap canvas { position: absolute; top: 0; left: 0; }
+
+    .placeholder { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; color: #9ca3af; }
+    .placeholder .icon { font-size: 2.8rem; }
+    .placeholder p { font-size: 0.88rem; }
+
+    /* Zones panel */
+    .zones-panel { width: 210px; background: #fff; border-left: 1px solid #e5e7eb; display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+    .zones-panel h3 { font-size: 0.72rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; padding: 10px 10px 7px; border-bottom: 1px solid #f0f0f0; }
+    .zone-list { flex: 1; overflow-y: auto; padding: 6px; }
+    .zone-item { background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 5px 8px; margin-bottom: 4px; font-size: 0.73rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background .1s; }
+    .zone-item:hover { background: #fee2e2; }
+    .zone-item.selected { background: #fca5a5; border-color: #ef4444; }
+    .zone-item .zone-label { color: #991b1b; font-weight: 600; }
+    .zone-item .zone-del { background: none; border: none; color: #dc2626; cursor: pointer; font-size: 0.85rem; padding: 0 2px; }
+    .zone-item .zone-actions { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+    .zone-act { background: none; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 0.65rem; padding: 1px 5px; cursor: pointer; color: #6b7280; line-height: 1.5; white-space: nowrap; transition: all .12s; }
+    .zone-act:hover { background: #f3f4f6; border-color: #9ca3af; color: #374151; }
+    .zone-act.in-template { color: #d97706; border-color: #f59e0b; background: #fffbeb; }
+    .zone-act.in-template:hover { background: #fef3c7; }
+    .zones-hint { padding: 8px 10px; font-size: 0.72rem; color: #9ca3af; line-height: 1.5; border-top: 1px solid #f0f0f0; }
+
+    .status { padding: 6px 12px; font-size: 0.78rem; font-weight: 500; flex-shrink: 0; display: none; }
+    .status.info    { background: #eff6ff; color: #1d4ed8; display: block; }
+    .status.success { background: #f0fdf4; color: #15803d; display: block; }
+    .status.error   { background: #fef2f2; color: #dc2626; display: block; }
+    .status.loading { background: #fffbeb; color: #d97706; display: block; }
+
+    /* Explorer modal */
+    #explorer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 2000; align-items: center; justify-content: center; }
+    #explorer-overlay.open { display: flex; }
+    #explorer-modal { background: #fff; border-radius: 12px; width: 540px; max-width: 95vw; max-height: 78vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.3); overflow: hidden; }
+    #explorer-header { padding: 12px 14px 10px; border-bottom: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 7px; }
+    #explorer-header h2 { font-size: 0.92rem; font-weight: 700; }
+    #explorer-breadcrumb { font-size: 0.73rem; color: #6b7280; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 4px 10px; display: flex; align-items: center; gap: 6px; }
+    #explorer-breadcrumb .path-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+    #explorer-list { flex: 1; overflow-y: auto; padding: 5px; }
+    .exp-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; user-select: none; }
+    .exp-item:hover { background: #f3f4f6; }
+    .exp-item.exp-dir { color: #1d4ed8; }
+    .exp-item.exp-file { color: #111; }
+    .exp-item.exp-file:hover { background: #fff7ed; }
+    .exp-item.exp-selected { background: #dbeafe !important; }
+    .exp-item.exp-selected:hover { background: #bfdbfe !important; }
+    .exp-item .exp-icon { font-size: 1rem; flex-shrink: 0; }
+    .exp-item .exp-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .exp-up { color: #6b7280 !important; }
+    #explorer-footer { padding: 9px 12px; border-top: 1px solid #e5e7eb; display: flex; gap: 8px; align-items: center; }
+    #explorer-footer .select-hint { flex: 1; font-size: 0.76rem; color: #9ca3af; }
+
+    [hidden] { display: none !important; }
+
+    /* ── Anchor box (blue) ───────────────────────────────── */
+    .anchor-mode-active { outline: 3px dashed #6366f1; outline-offset: -3px; cursor: crosshair !important; }
+    #anchor-input-popover { position: fixed; z-index: 3000; background: #fff; border: 1px solid #6366f1; border-radius: 10px; padding: 12px 14px; box-shadow: 0 8px 24px rgba(0,0,0,.18); min-width: 240px; }
+    #anchor-input-popover h4 { font-size: 0.8rem; font-weight: 700; color: #4338ca; margin-bottom: 7px; }
+    #anchor-input-popover input { width: 100%; border: 1px solid #c7d2fe; border-radius: 6px; padding: 5px 8px; font-size: 0.8rem; margin-bottom: 8px; }
+    #anchor-input-popover input:focus { outline: none; border-color: #6366f1; }
+    #anchor-input-popover .row { display: flex; gap: 6px; }
+
+    /* ── Tooltip ─────────────────────────────────────────── */
+    #tooltip {
+      position: fixed; z-index: 9999; pointer-events: none;
+      background: #1a1a2e; color: #fff; font-size: 0.72rem; line-height: 1.45;
+      padding: 5px 10px; border-radius: 7px; max-width: 230px;
+      box-shadow: 0 4px 14px rgba(0,0,0,.25);
+      opacity: 0; transition: opacity .12s;
+    }
+    #tooltip.visible { opacity: 1; }
+    #tooltip::after {
+      content: ''; position: absolute; left: 50%; transform: translateX(-50%);
+      border: 5px solid transparent;
+    }
+    #tooltip.above::after { top: 100%; border-top-color: #1a1a2e; }
+    #tooltip.below::after { bottom: 100%; border-bottom-color: #1a1a2e; }
+
+    /* ── Manual modal ────────────────────────────────────── */
+    #manual-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 3000; align-items: center; justify-content: center; }
+    #manual-overlay.open { display: flex; }
+    #manual-modal { background: #fff; border-radius: 14px; width: 720px; max-width: 96vw; max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 24px 60px rgba(0,0,0,.3); overflow: hidden; }
+    #manual-header { padding: 16px 20px 12px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    #manual-header h2 { font-size: 1.05rem; font-weight: 700; flex: 1; }
+    #manual-body { flex: 1; overflow-y: auto; padding: 20px 24px 28px; }
+    #manual-body h3 { font-size: 0.88rem; font-weight: 700; color: #1a1a2e; margin: 22px 0 8px; padding-bottom: 5px; border-bottom: 2px solid #f0f0f0; }
+    #manual-body h3:first-child { margin-top: 0; }
+    #manual-body p { font-size: 0.82rem; color: #374151; line-height: 1.6; margin-bottom: 8px; }
+    #manual-body ul { font-size: 0.82rem; color: #374151; line-height: 1.7; margin: 0 0 8px 18px; }
+    #manual-body .row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+    #manual-body .row .btn-ex { flex-shrink: 0; min-width: 90px; justify-content: center; pointer-events: none; }
+    #manual-body .row .desc { font-size: 0.8rem; color: #374151; line-height: 1.5; padding-top: 2px; }
+    #manual-body .row .desc strong { color: #1a1a2e; }
+    #manual-body kbd { background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px; padding: 1px 5px; font-size: 0.72rem; font-family: monospace; }
+    #manual-body .note { background: #fffbeb; border-left: 3px solid #e67e22; padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 0.78rem; color: #92400e; margin: 8px 0 12px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Manual Redaction Tool <span class="badge">LOCAL</span></h1>
+  <button class="btn btn-ghost btn-sm" id="btn-open-manual" data-tip="Open the user manual with descriptions of every feature" style="margin-left:auto;background:rgba(255,255,255,0.12);color:#fff">📖 Manual</button>
+  <button class="btn btn-ghost btn-sm" id="btn-save-session" data-tip="Save the current session (zones, template, anchors) to a JSON file so you can restore it later" style="background:rgba(255,255,255,0.12);color:#fff">💾 Save session</button>
+  <button class="btn btn-ghost btn-sm" id="btn-load-session" data-tip="Load a previously saved session from a JSON file" style="background:rgba(255,255,255,0.12);color:#fff">📂 Load session</button>
+  <input type="file" id="session-file-input" accept=".json" hidden />
+  <button class="btn btn-ghost btn-sm" id="btn-new-session" data-tip="Clear all loaded documents, zones and templates and start a fresh session" style="background:rgba(255,255,255,0.12);color:#fff">🗑 New session</button>
+</header>
+
+<!-- Tooltip -->
+<div id="tooltip"></div>
+
+<!-- Manual modal -->
+<div id="manual-overlay">
+  <div id="manual-modal">
+    <div id="manual-header">
+      <h2>📖 Manual Redaction Tool — User Manual</h2>
+      <button class="btn btn-ghost btn-sm" id="btn-close-manual">✕ Close</button>
+    </div>
+    <div id="manual-body">
+
+      <h3>1 · Loading documents</h3>
+      <p>Type a path in the <strong>PDF file or directory</strong> field and click <strong>Load</strong>, or use 📂 to browse. You can load a single PDF or an entire folder — all PDFs appear in the file list on the left. Click any filename to open it in the editor.</p>
+      <div class="row"><button class="btn btn-primary btn-sm btn-ex">Load</button><div class="desc"><strong>Load</strong> — renders the PDF at the given path (or all PDFs in the folder) and adds them to the file list.</div></div>
+      <div class="row"><button class="btn btn-ghost btn-sm btn-ex">📂</button><div class="desc"><strong>Browse</strong> — opens a filesystem explorer with multi-select. Click a file to select it (blue highlight), <kbd>Ctrl</kbd>+click to toggle, <kbd>Shift</kbd>+click for a range, double-click to load one immediately. Click <strong>✓ Load selected (N)</strong> to add all selected files, or navigate to a folder and click <strong>Select this folder</strong> to load the whole directory.</div></div>
+
+      <h3>2 · Drawing redaction boxes</h3>
+      <p>Select <strong>Draw</strong> mode, then click and drag on the document to draw a box. Boxes appear red while editing and are saved as solid black in the exported PDF.</p>
+      <div class="row"><button class="btn btn-mode btn-sm btn-ex active">✏️ Draw</button><div class="desc"><strong>Draw mode</strong> — drag to create a new redaction box. Keyboard shortcut: <kbd>D</kbd></div></div>
+
+      <h3>3 · Moving &amp; resizing boxes</h3>
+      <p>Switch to <strong>Move</strong> mode, then click a box to select it. Eight handles appear around it — drag any handle to resize, drag the box body to reposition.</p>
+      <div class="row"><button class="btn btn-mode btn-sm btn-ex">✋ Move</button><div class="desc"><strong>Move mode</strong> — click to select a box, drag body to move, drag corner/edge handles to resize (like resizing images in Word). Keyboard: <kbd>M</kbd></div></div>
+
+      <h3>4 · Erasing boxes</h3>
+      <div class="row"><button class="btn btn-mode btn-sm btn-ex">🧹 Erase</button><div class="desc"><strong>Erase mode</strong> — click any existing box to delete it instantly. Supports undo. Keyboard: <kbd>E</kbd></div></div>
+
+      <h3>5 · Undo &amp; redo</h3>
+      <div class="row"><button class="btn btn-ghost btn-sm btn-ex">↩ Undo</button><div class="desc"><strong>Undo</strong> — reverses the last draw, move, resize or delete. Up to 60 steps. Keyboard: <kbd>Ctrl</kbd>+<kbd>Z</kbd></div></div>
+      <div class="row"><button class="btn btn-ghost btn-sm btn-ex">↪ Redo</button><div class="desc"><strong>Redo</strong> — re-applies an undone action. Keyboard: <kbd>Ctrl</kbd>+<kbd>Y</kbd></div></div>
+
+      <h3>6 · Zoom</h3>
+      <div class="row"><div style="display:flex;gap:4px;flex-shrink:0"><button class="btn-zoom zoom-btn btn-ex">－</button><button class="btn-zoom zoom-btn btn-ex">＋</button></div><div class="desc"><strong>Zoom out / in</strong> by 25% per click. Keyboard: <kbd>-</kbd> / <kbd>+</kbd></div></div>
+      <div class="row"><div style="display:flex;gap:3px;flex-shrink:0"><button class="zoom-preset btn-ex">25%</button><button class="zoom-preset btn-ex">50%</button><button class="zoom-preset btn-ex">100%</button></div><div class="desc"><strong>Zoom presets</strong> — jump directly to a fixed zoom level. Default is 50%.</div></div>
+      <div class="row"><button class="zoom-preset btn-ex">Fit</button><div class="desc"><strong>Fit</strong> — scales the page to fill the editor width.</div></div>
+
+      <h3>7 · Clearing zones</h3>
+      <div class="row"><button class="btn btn-ghost btn-sm btn-ex">Clear page</button><div class="desc"><strong>Clear page</strong> — removes all boxes on the current page (undoable).</div></div>
+      <div class="row"><button class="btn btn-ghost btn-sm btn-ex">Clear all</button><div class="desc"><strong>Clear all</strong> — removes all boxes on every page of the current document (asks for confirmation).</div></div>
+
+      <h3>8 · Template system</h3>
+      <p>Templates let you draw boxes once and stamp them across many documents. Click <strong>Template ▾</strong> to open the menu:</p>
+      <div class="row"><button class="btn btn-secondary btn-sm btn-ex">Template ▾</button><div class="desc">Opens the template menu. A badge appears on the button showing how many zones are saved in the current template.</div></div>
+      <ul>
+        <li><strong>💾 Save as template</strong> — captures all zones from the current document. Also records which document the template came from (needed for alignment).</li>
+        <li><strong>📋 Apply to this document</strong> — stamps the template onto the current document (asks for confirmation). If an alignment anchor is set, zones shift to match.</li>
+        <li><strong>📋 Apply to all documents</strong> — stamps the template onto every document in the file list. Shows aligned vs. direct-stamp counts in the status bar.</li>
+        <li><strong>✕ Clear template</strong> — discards the saved template.</li>
+      </ul>
+
+      <h3>9 · Intelligent alignment anchor (per page)</h3>
+      <p>Each page in the template can have its own independent anchor. Navigate to the page you want, then use <strong>🎯 Set anchor for this page</strong> from the Template menu. Draw a box around a text label that appears consistently in that page position across all your documents, type the text, and confirm. Repeat on each page that needs alignment.</p>
+      <ul>
+        <li>The canvas enters a blue crosshair mode — draw the box, type the anchor text, click <strong>✓ Set anchor</strong>.</li>
+        <li>The anchor for the current page is shown as a blue dashed box with an ⚓ icon. Switching pages shows that page's anchor (if set).</li>
+        <li>Pages without an anchor have their zones copied directly without any shift.</li>
+        <li>Each page's shift is computed independently — different layouts on different pages are handled correctly.</li>
+        <li>If the anchor text cannot be found in a target document on a given page, those zones are stamped without shifting.</li>
+        <li>Separate multiple candidate strings with a comma: <em>wniosek, Wnioskodawca</em></li>
+        <li>Use <strong>✕ Clear this page's anchor</strong> from the Template menu to remove the anchor for the current page only.</li>
+      </ul>
+      <div class="note">Set anchors on each page individually when pages have different layouts. The Template badge shows the total number of anchors set.</div>
+
+      <h3>10 · Zones panel</h3>
+      <p>The right panel lists every box on the current page. Click a zone row to select/highlight it on the canvas. Click <strong>✕</strong> on a row to delete that specific box.</p>
+
+      <h3>11 · Saving redacted files</h3>
+      <div class="row"><button class="btn btn-danger btn-sm btn-ex">✂️ Save</button><div class="desc"><strong>Save</strong> — applies all zones on the current document and writes the redacted PDF to the <em>Output directory</em>.</div></div>
+      <div class="row"><button class="btn btn-danger btn-sm btn-ex" style="font-size:0.68rem">✂️ Redact &amp; Save All</button><div class="desc"><strong>Redact &amp; Save All</strong> — processes every document in the file list that has at least one zone. Shows a summary when done.</div></div>
+      <div class="note">Redacted areas are filled with permanent black in the saved PDF. The original files are never modified — output always goes to the Output directory.</div>
+
+      <h3>12 · File list management</h3>
+      <div class="row"><span style="font-size:0.78rem;background:#e67e22;color:#fff;padding:4px 10px;border-radius:6px;font-weight:600;flex-shrink:0">document.pdf</span><div class="desc">The active document is highlighted in orange. Click any filename to switch to it.</div></div>
+      <p>Each file shows its zone count (or <em>done</em> / <em>error</em> after saving). The <strong>✕</strong> button on each row removes the document from the session without deleting the file from disk.</p>
+
+      <h3>13 · Session persistence</h3>
+      <p>All zones, file paths, the template and the alignment anchor are automatically saved to your browser's local storage after every change. Refreshing or closing the tab preserves your work — the session is restored on the next visit.</p>
+      <div class="row"><button class="btn btn-ghost btn-sm btn-ex" style="background:rgba(0,0,0,0.08)">🗑 New session</button><div class="desc"><strong>New session</strong> — clears everything (files, zones, template, anchor) and starts fresh. Asks for confirmation before clearing.</div></div>
+
+      <h3>14 · Keyboard shortcuts summary</h3>
+      <ul>
+        <li><kbd>D</kbd> — Draw mode</li>
+        <li><kbd>M</kbd> — Move mode</li>
+        <li><kbd>E</kbd> — Erase mode</li>
+        <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> — Undo</li>
+        <li><kbd>Ctrl</kbd>+<kbd>Y</kbd> — Redo</li>
+        <li><kbd>+</kbd> / <kbd>-</kbd> — Zoom in / out</li>
+        <li><kbd>Esc</kbd> — Close any open modal or browser dialog</li>
+      </ul>
+
+    </div>
+  </div>
+</div>
+
+<div class="workspace">
+
+  <!-- ===== SIDEBAR ===== -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <label>PDF file or directory</label>
+      <div class="input-row">
+        <input type="text" id="path-input" placeholder="/path/to/dir or file.pdf" />
+        <button class="btn btn-ghost btn-sm" id="btn-browse" data-tip="Browse filesystem for a PDF file or folder">📂</button>
+        <button class="btn btn-primary btn-sm" id="btn-load">Load</button>
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <label>Output directory</label>
+      <div class="input-row">
+        <input type="text" id="out-dir" placeholder="(auto: …/redacted)" />
+        <button class="btn btn-ghost btn-sm" id="btn-browse-out" data-tip="Browse filesystem to pick the output directory (you can create a new folder inside)">📂</button>
+      </div>
+    </div>
+    <div class="file-list-head" id="file-list-head">Files (0)</div>
+    <div class="file-list" id="file-list"></div>
+    <div style="padding:8px;border-top:1px solid #f0f0f0">
+      <button class="btn btn-danger btn-sm" id="btn-save-all" disabled style="width:100%" data-tip="Apply redactions to every document that has zones and save all to the output directory">✂️ Redact &amp; Save All</button>
+    </div>
+  </div>
+
+  <!-- ===== EDITOR ===== -->
+  <div class="editor-area">
+    <div class="editor-toolbar">
+      <!-- Row 1 -->
+      <div class="toolbar-row">
+        <span class="doc-name" id="doc-name">No document loaded</span>
+        <div class="page-nav">
+          <button id="btn-prev-page" disabled data-tip="Previous page">‹</button>
+          <span id="page-indicator">—</span>
+          <button id="btn-next-page" disabled data-tip="Next page">›</button>
+        </div>
+        <div class="toolbar-sep"></div>
+        <button class="btn btn-mode btn-sm active" id="btn-mode-draw" data-tip="Draw mode — drag to create a redaction box (D)">✏️ Draw</button>
+        <button class="btn btn-mode btn-sm" id="btn-mode-move" data-tip="Move mode — drag boxes to reposition; drag handles to resize (M)">✋ Move</button>
+        <button class="btn btn-mode btn-sm" id="btn-mode-erase" data-tip="Erase mode — click any box to delete it (E)">🧹 Erase</button>
+        <button class="btn btn-mode btn-sm" id="btn-mode-cleararea" data-tip="Clear area — drag a rectangle to remove all overlapping boxes across all documents on this page (C)">🟩 Clear area</button>
+        <div class="toolbar-sep"></div>
+        <button class="btn btn-ghost btn-sm" id="btn-undo" disabled data-tip="Undo last action (Ctrl+Z)">↩ Undo</button>
+        <button class="btn btn-ghost btn-sm" id="btn-redo" disabled data-tip="Redo last undone action (Ctrl+Y)">↪ Redo</button>
+        <div class="toolbar-sep"></div>
+        <button class="btn btn-ghost btn-sm" id="btn-clear-page" disabled data-tip="Remove all boxes on the current page">Clear page</button>
+        <button class="btn btn-ghost btn-sm" id="btn-clear-all" disabled data-tip="Remove all boxes on every page of this document">Clear all</button>
+        <button class="btn btn-ghost btn-sm" id="btn-remove-page" disabled data-tip="Mark this page for removal — it will be excluded when saving the PDF">🗑 Remove page</button>
+        <div class="toolbar-sep"></div>
+        <!-- Template dropdown -->
+        <div class="dropdown" id="template-dropdown">
+          <button class="btn btn-secondary btn-sm" id="btn-template-toggle" data-tip="Open template menu — save, apply or clear the zone template">
+            Template ▾ <span class="tmpl-badge" id="tmpl-badge" hidden></span>
+          </button>
+          <div class="dropdown-menu" id="template-menu" hidden>
+            <div class="dropdown-item" id="btn-tmpl-save">💾 Save as template</div>
+            <div class="dropdown-item danger disabled" id="btn-tmpl-clear">✕ Clear template</div>
+            <div class="dropdown-sep"></div>
+            <div class="dropdown-item" id="btn-tmpl-set-anchor">🎯 Set anchor for this page</div>
+            <div class="dropdown-item danger disabled" id="btn-tmpl-clear-anchor">✕ Clear this page's anchor</div>
+            <div class="dropdown-sep"></div>
+            <div class="dropdown-item disabled" id="btn-tmpl-apply-here">📋 Apply to this document</div>
+            <div class="dropdown-item danger disabled" id="btn-tmpl-apply-all">📋 Apply to all documents</div>
+          </div>
+        </div>
+        <div class="toolbar-sep"></div>
+        <button class="btn btn-danger btn-sm" id="btn-save-doc" disabled data-tip="Apply redactions and save this document to the output directory">✂️ Save</button>
+      </div>
+      <!-- Row 2: Zoom -->
+      <div class="toolbar-row">
+        <span style="font-size:0.72rem;color:#9ca3af;font-weight:600">ZOOM</span>
+        <div class="zoom-row">
+          <button class="zoom-btn" id="btn-zoom-out" data-tip="Zoom out (-)">－</button>
+          <span class="zoom-label" id="zoom-label">100%</span>
+          <button class="zoom-btn" id="btn-zoom-in" data-tip="Zoom in (+)">＋</button>
+        </div>
+        <button class="zoom-preset" data-zoom="0.25">25%</button>
+        <button class="zoom-preset" data-zoom="0.5">50%</button>
+        <button class="zoom-preset" data-zoom="0.75">75%</button>
+        <button class="zoom-preset" data-zoom="1">100%</button>
+        <button class="zoom-preset" id="btn-zoom-fit" data-tip="Scale document to fit editor width">Fit</button>
+      </div>
+    </div>
+
+    <div class="status" id="editor-status"></div>
+
+    <div class="canvas-scroll" id="canvas-scroll">
+      <div class="placeholder" id="editor-placeholder">
+        <div class="icon">📄</div>
+        <p>Enter a PDF path or directory and click Load</p>
+        <p style="font-size:0.76rem;color:#bbb">Draw: drag to create · Move mode: drag existing boxes</p>
+      </div>
+      <div class="canvas-wrap" id="canvas-wrap" hidden>
+        <img class="page-img" id="page-img" src="" alt="" />
+        <canvas id="draw-canvas"></canvas>
+        <div id="page-remove-overlay" hidden style="position:absolute;inset:0;background:rgba(220,38,38,0.12);display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:10;">
+          <div style="background:rgba(220,38,38,0.88);color:#fff;font-size:0.95rem;font-weight:700;padding:10px 22px;border-radius:8px;letter-spacing:.02em;">🗑 Page will be removed</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ZONES PANEL ===== -->
+  <div class="zones-panel">
+    <h3>Zones — page <span id="zones-page-label">—</span></h3>
+    <div class="zone-list" id="zone-list"></div>
+    <div class="zones-hint">
+      ✏️ Draw: drag to add a box<br>
+      ✋ Move: drag a box to reposition<br>
+      Click a zone to select · ✕ to delete<br>
+      Ctrl+Z / Ctrl+Y  ·  D / M to switch mode
+    </div>
+  </div>
+
+</div>
+
+<!-- Anchor input popover -->
+<div id="anchor-input-popover" hidden>
+  <h4>🎯 Intelligent alignment anchor</h4>
+  <p style="font-size:0.72rem;color:#6b7280;margin-bottom:8px">Type the text that appears inside the box you drew. It will be found in each document to align zones.</p>
+  <input type="text" id="anchor-input-text" placeholder="e.g. wniosek" />
+  <div class="row">
+    <button class="btn btn-secondary btn-sm" id="btn-anchor-confirm" style="flex:1">✓ Set anchor</button>
+    <button class="btn btn-ghost btn-sm" id="btn-anchor-cancel">✕</button>
+  </div>
+</div>
+
+<!-- Explorer Modal -->
+<div id="explorer-overlay">
+  <div id="explorer-modal">
+    <div id="explorer-header">
+      <h2 id="explorer-title">Browse</h2>
+      <div id="explorer-breadcrumb">
+        <span>📁</span>
+        <span class="path-text" id="explorer-path-text">/</span>
+      </div>
+    </div>
+    <div id="explorer-list"></div>
+    <div id="explorer-footer">
+      <span class="select-hint" id="explorer-hint"></span>
+      <button class="btn btn-ghost btn-sm" id="btn-exp-new-folder">📁 New folder</button>
+      <button class="btn btn-primary btn-sm" id="btn-exp-load-selected" hidden disabled>✓ Load selected (0)</button>
+      <button class="btn btn-secondary btn-sm" id="btn-exp-select-dir">Select this folder</button>
+      <button class="btn btn-ghost btn-sm" id="btn-exp-cancel">Cancel</button>
+    </div>
+    <div id="new-folder-row" hidden style="padding:8px 12px;border-top:1px solid #e5e7eb;display:flex;gap:6px;align-items:center">
+      <input type="text" id="new-folder-name" placeholder="New folder name" style="flex:1;border:1px solid #d1d5db;border-radius:6px;padding:5px 8px;font-size:0.8rem" />
+      <button class="btn btn-primary btn-sm" id="btn-new-folder-confirm">Create</button>
+      <button class="btn btn-ghost btn-sm" id="btn-new-folder-cancel">✕</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// Canvas Controller Factory
+// ============================================================
+function makeController(imgEl, canvasEl, getZones, setZones, onChanged) {
+  let mode = 'draw', zoom = 1.0, selIdx = -1;
+  let drawing  = false, dStartX = 0, dStartY = 0, dCurX = 0, dCurY = 0;
+  let moving   = false, mStartX = 0, mStartY = 0, mOrigX = 0, mOrigY = 0;
+  let resizing = false, resizeHandle = null, resizeOrig = null;
+  let history  = [], histIdx = -1;
+  let anchorCb    = null;   // callback(zone) invoked when anchor box is finished
+  let anchorZone  = null;   // confirmed anchor zone displayed in blue
+  let clearAreaCb = null;   // callback(sel) invoked when cleararea selection is finished
+
+  // ── history ────────────────────────────────────────────────
+  function snapshot()    { return JSON.parse(JSON.stringify(getZones())); }
+  function pushHistory() { history=history.slice(0,histIdx+1); history.push(snapshot()); if(history.length>60)history.shift(); histIdx=history.length-1; }
+  function resetHistory(){ history=[snapshot()]; histIdx=0; }
+  function undo() { if(histIdx<=0)return false; histIdx--; setZones(JSON.parse(JSON.stringify(history[histIdx]))); selIdx=-1; onChanged(); redraw(); return true; }
+  function redo() { if(histIdx>=history.length-1)return false; histIdx++; setZones(JSON.parse(JSON.stringify(history[histIdx]))); selIdx=-1; onChanged(); redraw(); return true; }
+  function canUndo() { return histIdx>0; }
+  function canRedo() { return histIdx<history.length-1; }
+
+  // ── coordinate helpers ─────────────────────────────────────
+  function norm(e) { const r=imgEl.getBoundingClientRect(); return {x:(e.clientX-r.left)/r.width, y:(e.clientY-r.top)/r.height}; }
+  function px(e)   { const r=canvasEl.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
+
+  // ── zone hit-test (normalised) ─────────────────────────────
+  function hitTest(nx, ny) {
+    const z=getZones();
+    for (let i=z.length-1;i>=0;i--)
+      if (nx>=z[i].x&&nx<=z[i].x+z[i].w&&ny>=z[i].y&&ny<=z[i].y+z[i].h) return i;
+    return -1;
+  }
+
+  // ── resize handles ─────────────────────────────────────────
+  const HSIZE = 7;   // visual px
+  const HHIT  = 9;   // hit radius px
+
+  const HANDLE_CURSORS = {
+    tl:'nwse-resize', t:'ns-resize',  tr:'nesw-resize',
+    r :'ew-resize',   br:'nwse-resize', b:'ns-resize',
+    bl:'nesw-resize', l:'ew-resize',
+  };
+
+  function handlePositions(zone) {
+    const cw=canvasEl.width, ch=canvasEl.height;
+    const x=zone.x*cw, y=zone.y*ch, w=zone.w*cw, h=zone.h*ch;
+    return { tl:[x,y], t:[x+w/2,y], tr:[x+w,y], r:[x+w,y+h/2],
+             br:[x+w,y+h], b:[x+w/2,y+h], bl:[x,y+h], l:[x,y+h/2] };
+  }
+
+  function hitTestHandle(ppx, ppy, zone) {
+    const handles=handlePositions(zone);
+    for (const [name,[hx,hy]] of Object.entries(handles))
+      if (Math.abs(ppx-hx)<=HHIT && Math.abs(ppy-hy)<=HHIT) return name;
+    return null;
+  }
+
+  function applyResize(handle, orig, dx, dy) {
+    let {x,y,w,h} = orig;
+    if (handle.includes('l')) { const nx=Math.min(x+w-0.005, x+dx); w=w-(nx-x); x=nx; }
+    if (handle.includes('r')) { w=Math.max(0.005, w+dx); }
+    if (handle.includes('t')) { const ny=Math.min(y+h-0.003, y+dy); h=h-(ny-y); y=ny; }
+    if (handle.includes('b')) { h=Math.max(0.003, h+dy); }
+    x=Math.max(0,x); y=Math.max(0,y);
+    w=Math.min(1-x,w); h=Math.min(1-y,h);
+    return {x,y,w,h};
+  }
+
+  // ── draw ───────────────────────────────────────────────────
+  function redraw() {
+    const cw=canvasEl.width, ch=canvasEl.height;
+    const ctx=canvasEl.getContext('2d');
+    ctx.clearRect(0,0,cw,ch);
+    const z=getZones();
+
+    z.forEach((zone,i) => {
+      const x=zone.x*cw, y=zone.y*ch, w=zone.w*cw, h=zone.h*ch, isSel=i===selIdx;
+      ctx.fillStyle   = isSel ? 'rgba(220,38,38,0.5)' : 'rgba(220,38,38,0.3)';
+      ctx.strokeStyle = isSel ? '#b91c1c' : '#dc2626';
+      ctx.lineWidth   = isSel ? 3 : 2;
+      ctx.fillRect(x,y,w,h); ctx.strokeRect(x,y,w,h);
+      ctx.fillStyle='#fff';
+      ctx.font=`bold ${Math.max(10,Math.min(14,h*0.45))}px sans-serif`;
+      ctx.fillText(i+1, x+4, y+Math.min(14,h*0.7));
+
+      if (isSel && mode==='move') {
+        // draw 8 resize handles
+        const handles=handlePositions(zone);
+        Object.values(handles).forEach(([hx,hy]) => {
+          ctx.fillStyle='#fff'; ctx.strokeStyle='#b91c1c'; ctx.lineWidth=1.5;
+          ctx.fillRect(hx-HSIZE/2, hy-HSIZE/2, HSIZE, HSIZE);
+          ctx.strokeRect(hx-HSIZE/2, hy-HSIZE/2, HSIZE, HSIZE);
+        });
+      }
+    });
+
+    if (drawing && mode!=='anchor' && mode!=='cleararea') {
+      const x=Math.min(dStartX,dCurX)*cw, y=Math.min(dStartY,dCurY)*ch;
+      const w=Math.abs(dCurX-dStartX)*cw, h=Math.abs(dCurY-dStartY)*ch;
+      ctx.fillStyle='rgba(220,38,38,0.18)'; ctx.strokeStyle='#dc2626'; ctx.lineWidth=2;
+      ctx.setLineDash([5,3]); ctx.fillRect(x,y,w,h); ctx.strokeRect(x,y,w,h); ctx.setLineDash([]);
+    }
+
+    // Draw in-progress clear-area selection in green
+    if (drawing && mode==='cleararea') {
+      const x=Math.min(dStartX,dCurX)*cw, y=Math.min(dStartY,dCurY)*ch;
+      const w=Math.abs(dCurX-dStartX)*cw, h=Math.abs(dCurY-dStartY)*ch;
+      ctx.fillStyle='rgba(34,197,94,0.12)'; ctx.strokeStyle='#16a34a'; ctx.lineWidth=2;
+      ctx.setLineDash([6,3]); ctx.fillRect(x,y,w,h); ctx.strokeRect(x,y,w,h); ctx.setLineDash([]);
+    }
+
+    // Draw confirmed anchor zone in blue
+    if (anchorZone) {
+      const ax=anchorZone.x*cw, ay=anchorZone.y*ch, aw=anchorZone.w*cw, ah=anchorZone.h*ch;
+      ctx.fillStyle='rgba(99,102,241,0.15)'; ctx.strokeStyle='#6366f1'; ctx.lineWidth=2;
+      ctx.setLineDash([6,3]); ctx.fillRect(ax,ay,aw,ah); ctx.strokeRect(ax,ay,aw,ah); ctx.setLineDash([]);
+      ctx.fillStyle='#6366f1'; ctx.font='bold 11px sans-serif';
+      ctx.fillText('⚓', ax+3, ay+13);
+    }
+
+    // Draw in-progress anchor box in blue dashed
+    if (drawing && mode==='anchor') {
+      const x=Math.min(dStartX,dCurX)*cw, y=Math.min(dStartY,dCurY)*ch;
+      const w=Math.abs(dCurX-dStartX)*cw, h=Math.abs(dCurY-dStartY)*ch;
+      ctx.fillStyle='rgba(99,102,241,0.12)'; ctx.strokeStyle='#6366f1'; ctx.lineWidth=2;
+      ctx.setLineDash([6,3]); ctx.fillRect(x,y,w,h); ctx.strokeRect(x,y,w,h); ctx.setLineDash([]);
+    }
+  }
+
+  function syncCanvasSize() { canvasEl.width=imgEl.offsetWidth; canvasEl.height=imgEl.offsetHeight; }
+
+  // ── cursor ─────────────────────────────────────────────────
+  function updateCursor(e) {
+    if (mode==='draw'||mode==='anchor'||mode==='cleararea') { canvasEl.style.cursor='crosshair'; return; }
+    if (mode==='erase') { canvasEl.style.cursor=hitTest(norm(e).x,norm(e).y)>=0?'cell':'crosshair'; return; }
+    // move mode: check handles on selected zone first
+    if (selIdx>=0) {
+      const p=px(e), z=getZones();
+      if (selIdx<z.length) {
+        const h=hitTestHandle(p.x,p.y,z[selIdx]);
+        if (h) { canvasEl.style.cursor=HANDLE_CURSORS[h]; return; }
+      }
+    }
+    canvasEl.style.cursor=hitTest(norm(e).x,norm(e).y)>=0?'grab':'default';
+  }
+
+  // ── events ─────────────────────────────────────────────────
+  canvasEl.addEventListener('mousemove', e => {
+    updateCursor(e);
+
+    if (drawing) { const p=norm(e); dCurX=p.x; dCurY=p.y; redraw(); return; }
+
+    if (resizing) {
+      const p=norm(e);
+      const z=getZones();
+      z[selIdx]=applyResize(resizeHandle, resizeOrig, p.x-mStartX, p.y-mStartY);
+      setZones(z); canvasEl.style.cursor=HANDLE_CURSORS[resizeHandle]; redraw(); return;
+    }
+
+    if (moving) {
+      const p=norm(e), dx=p.x-mStartX, dy=p.y-mStartY, z=getZones();
+      z[selIdx].x=Math.max(0,Math.min(1-z[selIdx].w, mOrigX+dx));
+      z[selIdx].y=Math.max(0,Math.min(1-z[selIdx].h, mOrigY+dy));
+      setZones(z); canvasEl.style.cursor='grabbing'; redraw();
+    }
+  });
+
+  canvasEl.addEventListener('mousedown', e => {
+    if (e.button!==0) return; e.preventDefault();
+    const p=norm(e);
+
+    if (mode==='erase') {
+      const hit=hitTest(p.x,p.y);
+      if (hit>=0) { pushHistory(); const z=getZones(); z.splice(hit,1); setZones(z); selIdx=-1; onChanged(); redraw(); }
+      return;
+    }
+
+    if (mode==='draw'||mode==='anchor'||mode==='cleararea') { drawing=true; dStartX=p.x; dStartY=p.y; dCurX=p.x; dCurY=p.y; return; }
+
+    // move mode — check resize handle on selected zone first
+    if (selIdx>=0) {
+      const pp=px(e), z=getZones();
+      if (selIdx<z.length) {
+        const h=hitTestHandle(pp.x,pp.y,z[selIdx]);
+        if (h) {
+          resizing=true; resizeHandle=h;
+          mStartX=p.x; mStartY=p.y;
+          resizeOrig={...z[selIdx]};
+          return;
+        }
+      }
+    }
+
+    // check for zone body (move)
+    const hit=hitTest(p.x,p.y);
+    if (hit>=0) {
+      selIdx=hit; moving=true; mStartX=p.x; mStartY=p.y;
+      const z=getZones(); mOrigX=z[hit].x; mOrigY=z[hit].y;
+      canvasEl.style.cursor='grabbing'; onChanged(); redraw();
+    } else { selIdx=-1; onChanged(); redraw(); }
+  });
+
+  canvasEl.addEventListener('mouseup', e => {
+    if (drawing && mode==='anchor') {
+      drawing=false;
+      const p=norm(e), x=Math.min(dStartX,p.x), y=Math.min(dStartY,p.y);
+      const w=Math.abs(p.x-dStartX), h=Math.abs(p.y-dStartY);
+      if (w>0.005&&h>0.003 && anchorCb) { anchorCb({x,y,w,h}); }
+      else { mode='draw'; }
+      redraw(); return;
+    }
+    if (drawing && mode==='cleararea') {
+      drawing=false;
+      const p=norm(e), x=Math.min(dStartX,p.x), y=Math.min(dStartY,p.y);
+      const w=Math.abs(p.x-dStartX), h=Math.abs(p.y-dStartY);
+      if (w>0.005&&h>0.003 && clearAreaCb) { clearAreaCb({x,y,w,h}); }
+      redraw(); return;
+    }
+    if (drawing) {
+      drawing=false;
+      const p=norm(e), x=Math.min(dStartX,p.x), y=Math.min(dStartY,p.y);
+      const w=Math.abs(p.x-dStartX), h=Math.abs(p.y-dStartY);
+      if (w>0.005&&h>0.003) { pushHistory(); const z=getZones(); z.push({x,y,w,h}); setZones(z); selIdx=z.length-1; onChanged(); }
+      redraw(); return;
+    }
+    if (resizing) { resizing=false; resizeHandle=null; resizeOrig=null; pushHistory(); onChanged(); redraw(); return; }
+    if (moving)   { moving=false; pushHistory(); canvasEl.style.cursor='grab'; onChanged(); }
+  });
+
+  canvasEl.addEventListener('mouseleave', () => {
+    if (drawing)  { drawing=false; redraw(); }
+    if (moving)   { moving=false; }
+    if (resizing) { resizing=false; resizeHandle=null; resizeOrig=null; }
+  });
+
+  function setMode(m) {
+    mode=m; resizing=false; resizeHandle=null; resizeOrig=null; anchorCb=null; clearAreaCb=null;
+    canvasEl.style.cursor=m==='draw'||m==='erase'||m==='anchor'||m==='cleararea'?'crosshair':'default';
+    if (m!=='move') { selIdx=-1; redraw(); }
+  }
+  function enterAnchorMode(cb) { anchorCb=cb; mode='anchor'; selIdx=-1; canvasEl.style.cursor='crosshair'; redraw(); }
+  function enterClearAreaMode(cb) { clearAreaCb=cb; mode='cleararea'; selIdx=-1; canvasEl.style.cursor='crosshair'; redraw(); }
+  function setDisplayAnchor(z) { anchorZone=z; redraw(); }
+  function clearDisplayAnchor() { anchorZone=null; redraw(); }
+  function applyZoom(z) { zoom=z; if(!imgEl.naturalWidth)return; imgEl.style.width=Math.round(imgEl.naturalWidth*zoom)+'px'; syncCanvasSize(); redraw(); }
+  function onImgLoad() { syncCanvasSize(); resetHistory(); redraw(); }
+
+  return { redraw, syncCanvasSize, resetHistory, pushHistory, undo, redo, canUndo, canRedo,
+           setMode, applyZoom, getZoom:()=>zoom,
+           getSelIdx:()=>selIdx, setSelIdx:(i)=>{selIdx=i;redraw();}, onImgLoad,
+           enterAnchorMode, setDisplayAnchor, clearDisplayAnchor, enterClearAreaMode };
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+function setStatus(type, msg) { const e=document.getElementById('editor-status'); e.className=`status ${type}`; e.textContent=msg; }
+function clearStatus() { const e=document.getElementById('editor-status'); e.className='status'; e.textContent=''; }
+function deepCopy(o) { return JSON.parse(JSON.stringify(o)); }
+
+// ============================================================
+// STATE
+// ============================================================
+let dirPath       = '';
+let allFiles      = [];
+let zones         = {};
+let fileStatus    = {};
+let renderedPages = {};
+let currentFile   = null;
+let currentPage   = 0;
+let templateZones      = null;   // saved template { pageIdx: [Zone] }
+let templateSourcePath = null;   // absolute path of the doc used to save the template
+let templateAnchors    = {};     // { pageIdxStr: { x, y, w, h, text } } — per-page anchors
+let removedPages  = {};          // { filename: Set<pageIndex> } — pages excluded on save
+
+// ============================================================
+// Persistence (localStorage)
+// ============================================================
+const STATE_KEY = 'manual_redaction_state_v1';
+
+function saveState() {
+  try {
+    // Convert Sets to arrays for JSON serialisation
+    const removedPagesArr = {};
+    Object.entries(removedPages).forEach(([f, s]) => { removedPagesArr[f] = [...s]; });
+    localStorage.setItem(STATE_KEY, JSON.stringify({
+      dirPath, allFiles, zones, fileStatus, currentFile, currentPage,
+      templateZones, templateSourcePath, templateAnchors,
+      removedPages: removedPagesArr,
+      pathInput: document.getElementById('path-input').value,
+      outDir:    document.getElementById('out-dir').value,
+    }));
+  } catch(e) { /* quota exceeded — ignore */ }
+}
+
+async function restoreState() {
+  const raw = localStorage.getItem(STATE_KEY);
+  if (!raw) return;
+  try {
+    const s = JSON.parse(raw);
+    dirPath       = s.dirPath       || '';
+    allFiles      = s.allFiles      || [];
+    zones         = s.zones         || {};
+    fileStatus    = s.fileStatus    || {};
+    currentFile   = s.currentFile   || null;
+    currentPage   = s.currentPage   || 0;
+    templateZones      = s.templateZones      || null;
+    templateSourcePath = s.templateSourcePath || null;
+    templateAnchors    = s.templateAnchors    || {};
+    removedPages  = {};
+    if (s.removedPages) {
+      Object.entries(s.removedPages).forEach(([f, arr]) => { removedPages[f] = new Set(arr); });
+    }
+    if (s.pathInput) document.getElementById('path-input').value = s.pathInput;
+    if (s.outDir)    document.getElementById('out-dir').value    = s.outDir;
+    if (allFiles.length > 0) {
+      document.getElementById('file-list-head').textContent = `Files (${allFiles.length})`;
+      document.getElementById('btn-save-all').disabled = false;
+      renderFileList();
+      updateTemplateBadge();
+      updateButtons();
+      if (currentFile) await openFile(currentFile);
+      ctrl.setDisplayAnchor(templateAnchors[(currentPage || 0).toString()] || null);
+    }
+  } catch(e) { console.warn('Could not restore state:', e); }
+}
+
+// ============================================================
+// Canvas controller
+// ============================================================
+const ctrl = makeController(
+  document.getElementById('page-img'),
+  document.getElementById('draw-canvas'),
+  () => (currentFile && zones[currentFile]) ? (zones[currentFile][currentPage] || []) : [],
+  (z) => { if (!currentFile) return; if (!zones[currentFile]) zones[currentFile]={}; zones[currentFile][currentPage]=z; },
+  () => { renderZoneList(); renderFileList(); updateButtons(); saveState(); }
+);
+
+// ============================================================
+// Load
+// ============================================================
+document.getElementById('btn-load').addEventListener('click', loadPath);
+document.getElementById('path-input').addEventListener('keydown', e => { if (e.key==='Enter') loadPath(); });
+
+async function loadPath() {
+  const input = document.getElementById('path-input').value.trim();
+  if (!input) return;
+  setStatus('loading', '⏳ Loading …');
+  try {
+    // Try as PDF file first, fall back to directory
+    if (input.toLowerCase().endsWith('.pdf')) {
+      await loadSingleFile(input);
+    } else {
+      await loadDirectory(input);
+    }
+    clearStatus();
+  } catch(e) { setStatus('error', 'Error: ' + e.message); }
+}
+
+async function loadDirectory(dir) {
+  const res = await fetch('/list_pdfs', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({dir_path: dir}) });
+  if (!res.ok) throw new Error((await res.json()).detail);
+  const data = await res.json();
+  dirPath = dir;
+  allFiles = data.files;
+  allFiles.forEach(f => { if (!fileStatus[f]) fileStatus[f]='pending'; if (!zones[f]) zones[f]={}; });
+  if (!document.getElementById('out-dir').value)
+    document.getElementById('out-dir').value = dir.replace(/\/?$/,'') + '/redacted';
+  renderFileList();
+  document.getElementById('file-list-head').textContent = `Files (${allFiles.length})`;
+  document.getElementById('btn-save-all').disabled = allFiles.length === 0;
+  saveState();
+  if (allFiles.length > 0) await openFile(allFiles[0]);
+}
+
+async function loadSingleFile(filePath) {
+  // Derive directory from file path
+  const lastSlash = filePath.lastIndexOf('/');
+  const dir = lastSlash > 0 ? filePath.slice(0, lastSlash) : '/';
+  const fname = filePath.slice(lastSlash + 1);
+  dirPath = dir;
+  if (!allFiles.includes(fname)) {
+    allFiles = [fname, ...allFiles.filter(f => f !== fname)];
+    if (!fileStatus[fname]) fileStatus[fname] = 'pending';
+    if (!zones[fname]) zones[fname] = {};
+  }
+  if (!document.getElementById('out-dir').value)
+    document.getElementById('out-dir').value = dir + '/redacted';
+  renderFileList();
+  document.getElementById('file-list-head').textContent = `Files (${allFiles.length})`;
+  document.getElementById('btn-save-all').disabled = false;
+  saveState();
+  await openFile(fname);
+}
+
+async function openFile(filename, pageHint) {
+  const targetPage = (pageHint !== undefined) ? pageHint : 0;
+  currentFile = filename; currentPage = 0;
+  if (!renderedPages[filename]) {
+    setStatus('loading', `⏳ Rendering ${filename} …`);
+    const path = dirPath.replace(/\/?$/,'/') + filename;
+    const res = await fetch('/render', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path}) });
+    if (!res.ok) throw new Error((await res.json()).detail);
+    renderedPages[filename] = (await res.json()).pages;
+    clearStatus();
+  }
+  const pageCount = (renderedPages[filename] || []).length;
+  showPage(Math.min(targetPage, Math.max(0, pageCount - 1)));
+  document.getElementById('doc-name').textContent = filename;
+  renderFileList();
+  updateButtons();
+  saveState();
+}
+
+function showPage(idx) {
+  currentPage = idx;
+  const pages = renderedPages[currentFile] || [];
+  if (!pages.length) return;
+  const img = document.getElementById('page-img');
+  img.onload = () => { applyZoom(currentZoom); ctrl.onImgLoad(); };
+  img.src = `data:image/jpeg;base64,${pages[idx].image_b64}`;
+  document.getElementById('editor-placeholder').hidden = true;
+  document.getElementById('canvas-wrap').hidden = false;
+  document.getElementById('page-indicator').textContent = `${idx+1} / ${pages.length}`;
+  document.getElementById('zones-page-label').textContent = idx+1;
+  document.getElementById('btn-prev-page').disabled = idx === 0;
+  document.getElementById('btn-next-page').disabled = idx >= pages.length - 1;
+  updateRemovePageUI();
+  ctrl.setDisplayAnchor(templateAnchors?.[idx.toString()] || null);
+  renderZoneList();
+  saveState();
+}
+
+document.getElementById('btn-prev-page').addEventListener('click', () => showPage(currentPage-1));
+document.getElementById('btn-next-page').addEventListener('click', () => showPage(currentPage+1));
+
+// ============================================================
+// File list
+// ============================================================
+function renderFileList() {
+  const list = document.getElementById('file-list');
+  list.innerHTML = '';
+  allFiles.forEach(f => {
+    const n = Object.values(zones[f]||{}).reduce((s,z)=>s+z.length,0);
+    const st = fileStatus[f]||'pending';
+    const item = document.createElement('div');
+    item.className = 'file-item' + (f===currentFile?' active':'');
+    item.innerHTML = `<span class="fname" title="${f}">${f}</span><span class="file-status ${st}">${st==='pending'?(n>0?n+' zones':'—'):st}</span><button class="file-remove" title="Remove from session">✕</button>`;
+    item.querySelector('.fname').addEventListener('click', () => openFile(f, currentPage));
+    item.querySelector('.file-status').addEventListener('click', () => openFile(f, currentPage));
+    item.querySelector('.file-remove').addEventListener('click', e => {
+      e.stopPropagation();
+      removeFile(f);
+    });
+    list.appendChild(item);
+  });
+}
+
+function removeFile(f) {
+  allFiles = allFiles.filter(x => x !== f);
+  delete zones[f]; delete fileStatus[f]; delete renderedPages[f]; delete removedPages[f];
+  document.getElementById('file-list-head').textContent = `Files (${allFiles.length})`;
+  if (currentFile === f) {
+    currentFile = allFiles.length > 0 ? allFiles[0] : null;
+    currentPage = 0;
+    if (currentFile) { openFile(currentFile); }
+    else {
+      document.getElementById('doc-name').textContent = 'No document loaded';
+      document.getElementById('page-indicator').textContent = '—';
+      document.getElementById('zones-page-label').textContent = '—';
+      document.getElementById('editor-placeholder').hidden = false;
+      document.getElementById('canvas-wrap').hidden = true;
+      document.getElementById('zone-list').innerHTML = '';
+    }
+  }
+  renderFileList(); updateButtons(); saveState();
+}
+
+// ============================================================
+// Zones panel
+// ============================================================
+function renderZoneList() {
+  const list = document.getElementById('zone-list');
+  const pageStr = currentPage.toString();
+  const zs = (currentFile && zones[currentFile]) ? (zones[currentFile][pageStr]||[]) : [];
+  const sel = ctrl.getSelIdx();
+  list.innerHTML = '';
+  if (!zs.length) { list.innerHTML='<div style="color:#9ca3af;font-size:0.75rem;padding:8px">No zones on this page</div>'; return; }
+  zs.forEach((z, i) => {
+    const inTmpl = isInTemplate(pageStr, z);
+    const hasOtherDocs = allFiles.length > 1;
+    const item = document.createElement('div');
+    item.className = 'zone-item' + (i===sel?' selected':'');
+    item.innerHTML = `
+      <span class="zone-label">Zone ${i+1} <span style="color:#9ca3af;font-weight:400">${(z.w*100).toFixed(0)}×${(z.h*100).toFixed(0)}%</span></span>
+      <span class="zone-actions">
+        <button class="zone-act${inTmpl?' in-template':''}" data-action="tmpl" title="${inTmpl?'Remove from template':'Add to template'}">${inTmpl?'📌 tmpl':'○ tmpl'}</button>
+        <button class="zone-act" data-action="prop"  title="Propagate this zone to all other documents" ${hasOtherDocs?'':'disabled'}>→ all</button>
+        <button class="zone-act" data-action="rmall" title="Remove this zone from all other documents (uses anchor alignment to find the matching zone in each document)" ${hasOtherDocs?'':'disabled'}>✕ all</button>
+        <button class="zone-del" title="Delete">✕</button>
+      </span>`;
+    item.addEventListener('click', e => {
+      const action = e.target.dataset?.action;
+      if (e.target.classList.contains('zone-del')) {
+        ctrl.pushHistory();
+        zones[currentFile][pageStr].splice(i,1);
+        ctrl.setSelIdx(-1); ctrl.redraw(); renderZoneList(); renderFileList(); updateButtons(); saveState();
+      } else if (action === 'tmpl') {
+        toggleZoneInTemplate(pageStr, z);
+        renderZoneList();
+      } else if (action === 'prop') {
+        propagateZoneToAll(pageStr, z);
+      } else if (action === 'rmall') {
+        removeZoneFromAll(pageStr, z);
+      } else {
+        ctrl.setSelIdx(i); renderZoneList();
+      }
+    });
+    list.appendChild(item);
+  });
+}
+
+// ============================================================
+// Per-zone: template toggle & propagation
+// ============================================================
+
+function isInTemplate(pageStr, zone) {
+  if (!templateZones || !templateZones[pageStr]) return false;
+  return templateZones[pageStr].some(tz =>
+    Math.abs(tz.x - zone.x) < 0.005 && Math.abs(tz.y - zone.y) < 0.005 &&
+    Math.abs(tz.w - zone.w) < 0.005 && Math.abs(tz.h - zone.h) < 0.005
+  );
+}
+
+function toggleZoneInTemplate(pageStr, zone) {
+  // Initialise template if it doesn't exist yet
+  if (!templateZones) {
+    templateZones = {};
+    if (!templateSourcePath) templateSourcePath = dirPath.replace(/\/?$/, '/') + currentFile;
+  }
+  if (!templateZones[pageStr]) templateZones[pageStr] = [];
+
+  const idx = templateZones[pageStr].findIndex(tz =>
+    Math.abs(tz.x - zone.x) < 0.005 && Math.abs(tz.y - zone.y) < 0.005 &&
+    Math.abs(tz.w - zone.w) < 0.005 && Math.abs(tz.h - zone.h) < 0.005
+  );
+
+  if (idx >= 0) {
+    templateZones[pageStr].splice(idx, 1);
+    setStatus('info', `Zone removed from template.`);
+  } else {
+    templateZones[pageStr].push({ x: zone.x, y: zone.y, w: zone.w, h: zone.h });
+    setStatus('info', `Zone added to template.`);
+  }
+  setTimeout(clearStatus, 2000);
+  updateTemplateBadge(); updateButtons(); saveState();
+}
+
+async function propagateZoneToAll(pageStr, zone) {
+  const targets = allFiles.filter(f => f !== currentFile);
+  if (!targets.length) { setStatus('info', 'No other documents to propagate to.'); setTimeout(clearStatus,2000); return; }
+
+  const anchor = templateAnchors?.[pageStr];
+  // Use current doc as the reference for anchor search even without a saved template
+  const refDocPath = templateSourcePath || (dirPath.replace(/\/?$/, '/') + currentFile);
+
+  setStatus('loading', `⏳ Propagating zone to ${targets.length} document(s) …`);
+  let done = 0, skipped = 0;
+
+  for (const f of targets) {
+    if (!zones[f]) zones[f] = {};
+    if (!zones[f][pageStr]) zones[f][pageStr] = [];
+
+    // Skip if an identical zone already exists
+    const dup = zones[f][pageStr].some(z =>
+      Math.abs(z.x - zone.x) < 0.005 && Math.abs(z.y - zone.y) < 0.005 &&
+      Math.abs(z.w - zone.w) < 0.005 && Math.abs(z.h - zone.h) < 0.005
+    );
+    if (dup) { skipped++; continue; }
+
+    let placed = { x: zone.x, y: zone.y, w: zone.w, h: zone.h };
+
+    if (anchor) {
+      try {
+        const res = await fetch('/align_zones', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            template_doc_path: refDocPath,
+            template_zones: { [pageStr]: [zone] },
+            target_doc_path: dirPath.replace(/\/?$/, '/') + f,
+            page_anchors: { [pageStr]: anchor },
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const shifted = data.zones?.[pageStr]?.[0];
+          if (shifted) placed = shifted;
+        }
+      } catch (e) { /* fallback to exact copy */ }
+    }
+
+    zones[f][pageStr].push(placed);
+    if (!fileStatus[f]) fileStatus[f] = 'pending';
+    done++;
+  }
+
+  renderFileList(); updateButtons(); saveState();
+  const anchorNote = anchor ? ' (anchor-aligned)' : '';
+  const skipNote   = skipped ? `, ${skipped} already present` : '';
+  setStatus('success', `✓ Zone propagated to ${done} document(s)${anchorNote}${skipNote}.`);
+  setTimeout(clearStatus, 4000);
+}
+
+async function removeZoneFromAll(pageStr, zone) {
+  const targets = allFiles.filter(f => f !== currentFile);
+  if (!targets.length) { setStatus('info', 'No other documents to remove from.'); setTimeout(clearStatus,2000); return; }
+
+  const anchor = templateAnchors?.[pageStr];
+  const refDocPath = templateSourcePath || (dirPath.replace(/\/?$/, '/') + currentFile);
+
+  setStatus('loading', `⏳ Removing zone from ${targets.length} document(s) …`);
+  let removed = 0, notFound = 0;
+
+  for (const f of targets) {
+    if (!zones[f]?.[pageStr]?.length) { notFound++; continue; }
+
+    // Compute where this zone lands in the target document
+    let targetZone = { x: zone.x, y: zone.y, w: zone.w, h: zone.h };
+
+    if (anchor) {
+      try {
+        const res = await fetch('/align_zones', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            template_doc_path: refDocPath,
+            template_zones: { [pageStr]: [zone] },
+            target_doc_path: dirPath.replace(/\/?$/, '/') + f,
+            page_anchors: { [pageStr]: anchor },
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const shifted = data.zones?.[pageStr]?.[0];
+          if (shifted) targetZone = shifted;
+        }
+      } catch (e) { /* fallback to exact coords */ }
+    }
+
+    // Find the matching zone (slightly larger tolerance to handle float drift)
+    const idx = zones[f][pageStr].findIndex(z =>
+      Math.abs(z.x - targetZone.x) < 0.012 && Math.abs(z.y - targetZone.y) < 0.012 &&
+      Math.abs(z.w - targetZone.w) < 0.012 && Math.abs(z.h - targetZone.h) < 0.012
+    );
+
+    if (idx >= 0) {
+      zones[f][pageStr].splice(idx, 1);
+      removed++;
+    } else {
+      notFound++;
+    }
+  }
+
+  renderFileList(); updateButtons(); saveState();
+  const anchorNote = anchor ? ' (anchor-aligned search)' : '';
+  const notFoundNote = notFound ? `, not found in ${notFound}` : '';
+  setStatus('success', `✓ Zone removed from ${removed} document(s)${anchorNote}${notFoundNote}.`);
+  setTimeout(clearStatus, 4000);
+}
+
+// ============================================================
+// Clear area — remove all zones across all docs that overlap a selection
+// ============================================================
+function clearZonesInArea(sel) {
+  const pageStr = currentPage.toString();
+  let totalRemoved = 0;
+
+  for (const f of allFiles) {
+    if (!zones[f]?.[pageStr]?.length) continue;
+    const before = zones[f][pageStr].length;
+    zones[f][pageStr] = zones[f][pageStr].filter(z => {
+      // Keep zones that do NOT overlap the selection rectangle
+      const overlaps = z.x < sel.x + sel.w && z.x + z.w > sel.x &&
+                       z.y < sel.y + sel.h && z.y + z.h > sel.y;
+      return !overlaps;
+    });
+    totalRemoved += before - zones[f][pageStr].length;
+  }
+
+  ctrl.redraw(); renderZoneList(); renderFileList(); updateButtons(); saveState();
+
+  if (totalRemoved > 0) {
+    setStatus('success', `✓ Cleared ${totalRemoved} zone(s) in selected area across all documents.`);
+  } else {
+    setStatus('info', 'No zones found in the selected area.');
+  }
+  setTimeout(clearStatus, 3000);
+}
+
+// ============================================================
+// Toolbar buttons
+// ============================================================
+function updateButtons() {
+  const loaded = !!currentFile && (renderedPages[currentFile]||[]).length > 0;
+  const hasZones = currentFile && Object.values(zones[currentFile]||{}).some(z=>z.length>0);
+  const anyZones = Object.values(zones).some(fz => Object.values(fz).some(z=>z.length>0));
+  const hasRemovals = currentFile && removedPages[currentFile] && removedPages[currentFile].size > 0;
+  const anyRemovals = Object.values(removedPages).some(s => s.size > 0);
+  document.getElementById('btn-remove-page').disabled = !loaded;
+  document.getElementById('btn-save-doc').disabled   = !loaded || (!hasZones && !hasRemovals);
+  document.getElementById('btn-save-all').disabled   = !anyZones && !anyRemovals;
+  document.getElementById('btn-clear-page').disabled = !loaded;
+  document.getElementById('btn-clear-all').disabled  = !loaded;
+  document.getElementById('btn-undo').disabled = !ctrl.canUndo();
+  document.getElementById('btn-redo').disabled = !ctrl.canRedo();
+  const pages = currentFile ? (renderedPages[currentFile]||[]) : [];
+  document.getElementById('btn-prev-page').disabled = currentPage === 0;
+  document.getElementById('btn-next-page').disabled = currentPage >= pages.length - 1;
+  // Template apply buttons
+  const hasTmpl              = templateZones !== null;
+  const currentPageHasAnchor = !!(templateAnchors && templateAnchors[currentPage.toString()]);
+  document.getElementById('btn-tmpl-clear').classList.toggle('disabled', !hasTmpl);
+  document.getElementById('btn-tmpl-set-anchor').classList.toggle('disabled', !currentFile);
+  document.getElementById('btn-tmpl-clear-anchor').classList.toggle('disabled', !currentPageHasAnchor);
+  document.getElementById('btn-tmpl-apply-here').classList.toggle('disabled', !hasTmpl || !loaded);
+  document.getElementById('btn-tmpl-apply-all').classList.toggle('disabled', !hasTmpl || allFiles.length === 0);
+}
+
+// ============================================================
+// Remove page
+// ============================================================
+function updateRemovePageUI() {
+  const btn = document.getElementById('btn-remove-page');
+  const overlay = document.getElementById('page-remove-overlay');
+  if (!currentFile) return;
+  const isMarked = removedPages[currentFile]?.has(currentPage);
+  btn.classList.toggle('btn-danger', !!isMarked);
+  btn.classList.toggle('btn-ghost',  !isMarked);
+  btn.textContent = isMarked ? '↩ Keep page' : '🗑 Remove page';
+  overlay.hidden = !isMarked;
+}
+
+document.getElementById('btn-remove-page').addEventListener('click', () => {
+  if (!currentFile) return;
+  if (!removedPages[currentFile]) removedPages[currentFile] = new Set();
+  if (removedPages[currentFile].has(currentPage)) {
+    removedPages[currentFile].delete(currentPage);
+  } else {
+    removedPages[currentFile].add(currentPage);
+  }
+  updateRemovePageUI();
+  renderFileList();
+  updateButtons();
+  saveState();
+});
+
+// Mode
+document.getElementById('btn-mode-draw').addEventListener('click',      () => setMode('draw'));
+document.getElementById('btn-mode-move').addEventListener('click',      () => setMode('move'));
+document.getElementById('btn-mode-erase').addEventListener('click',     () => setMode('erase'));
+document.getElementById('btn-mode-cleararea').addEventListener('click', () => {
+  ctrl.enterClearAreaMode(sel => {
+    clearZonesInArea(sel);
+    // Return to draw mode after selection
+    setMode('draw');
+  });
+  document.querySelectorAll('.btn-mode').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-mode-cleararea').classList.add('active');
+});
+function setMode(m) {
+  ctrl.setMode(m);
+  document.getElementById('btn-mode-draw').classList.toggle('active',      m==='draw');
+  document.getElementById('btn-mode-move').classList.toggle('active',      m==='move');
+  document.getElementById('btn-mode-erase').classList.toggle('active',     m==='erase');
+  document.getElementById('btn-mode-cleararea').classList.toggle('active', m==='cleararea');
+}
+
+// Undo/redo
+document.getElementById('btn-undo').addEventListener('click', () => { ctrl.undo(); updateButtons(); });
+document.getElementById('btn-redo').addEventListener('click', () => { ctrl.redo(); updateButtons(); });
+
+// Clear
+document.getElementById('btn-clear-page').addEventListener('click', () => {
+  if (!currentFile) return;
+  ctrl.pushHistory();
+  if (!zones[currentFile]) zones[currentFile]={};
+  zones[currentFile][currentPage]=[];
+  ctrl.redraw(); renderZoneList(); renderFileList(); updateButtons();
+});
+document.getElementById('btn-clear-all').addEventListener('click', () => {
+  if (!currentFile||!confirm('Clear all zones on all pages of this document?')) return;
+  zones[currentFile]={};
+  ctrl.redraw(); renderZoneList(); renderFileList(); updateButtons();
+});
+
+// ============================================================
+// Template dropdown
+// ============================================================
+const templateMenu = document.getElementById('template-menu');
+
+document.getElementById('btn-template-toggle').addEventListener('click', e => {
+  e.stopPropagation();
+  if (!templateMenu.hidden) { templateMenu.hidden = true; return; }
+  const r = e.currentTarget.getBoundingClientRect();
+  templateMenu.style.top  = (r.bottom + 4) + 'px';
+  templateMenu.style.left = 'auto';
+  templateMenu.style.right = (window.innerWidth - r.right) + 'px';
+  templateMenu.hidden = false;
+});
+document.addEventListener('click', () => { templateMenu.hidden = true; });
+templateMenu.addEventListener('click', e => e.stopPropagation());
+
+function updateTemplateBadge() {
+  const badge = document.getElementById('tmpl-badge');
+  if (!templateZones) { badge.hidden = true; return; }
+  const n = Object.values(templateZones).reduce((s,z)=>s+z.length,0);
+  const a = Object.keys(templateAnchors || {}).length;
+  badge.textContent = n + ' zones' + (a > 0 ? `, ${a} anchor${a>1?'s':''}` : '');
+  badge.hidden = false;
+}
+
+// New session
+// ============================================================
+// Session export / import
+// ============================================================
+
+document.getElementById('btn-save-session').addEventListener('click', () => {
+  const removedPagesArr = {};
+  Object.entries(removedPages).forEach(([f, s]) => { removedPagesArr[f] = [...s]; });
+
+  const state = {
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    dirPath, allFiles, zones, fileStatus, currentFile, currentPage,
+    templateZones, templateSourcePath, templateAnchors,
+    removedPages: removedPagesArr,
+    pathInput: document.getElementById('path-input').value,
+    outDir:    document.getElementById('out-dir').value,
+  };
+
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `redaction-session-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setStatus('success', '✓ Session saved.');
+  setTimeout(clearStatus, 2000);
+});
+
+document.getElementById('btn-load-session').addEventListener('click', () => {
+  document.getElementById('session-file-input').click();
+});
+
+document.getElementById('session-file-input').addEventListener('change', async function() {
+  const file = this.files[0];
+  if (!file) return;
+  this.value = ''; // reset so the same file can be re-loaded if needed
+  try {
+    const s = JSON.parse(await file.text());
+
+    dirPath       = s.dirPath       || '';
+    allFiles      = s.allFiles      || [];
+    zones         = s.zones         || {};
+    fileStatus    = s.fileStatus    || {};
+    currentFile   = s.currentFile   || null;
+    currentPage   = s.currentPage   || 0;
+    templateZones      = s.templateZones      || null;
+    templateSourcePath = s.templateSourcePath || null;
+    templateAnchors    = s.templateAnchors    || {};
+    removedPages  = {};
+    if (s.removedPages) {
+      Object.entries(s.removedPages).forEach(([f, arr]) => { removedPages[f] = new Set(arr); });
+    }
+    if (s.pathInput) document.getElementById('path-input').value = s.pathInput;
+    if (s.outDir)    document.getElementById('out-dir').value    = s.outDir;
+
+    // Reset UI
+    document.getElementById('file-list-head').textContent = `Files (${allFiles.length})`;
+    document.getElementById('btn-save-all').disabled = allFiles.length === 0;
+    document.getElementById('zone-list').innerHTML = '';
+    document.getElementById('canvas-wrap').hidden = true;
+    document.getElementById('editor-placeholder').hidden = allFiles.length > 0;
+    document.getElementById('doc-name').textContent = currentFile || 'No document loaded';
+    document.getElementById('page-indicator').textContent = '—';
+    document.getElementById('zones-page-label').textContent = '—';
+    renderedPages = {};   // pages must be re-rendered from disk
+
+    renderFileList();
+    updateTemplateBadge();
+    updateButtons();
+    saveState();   // persist to localStorage too
+
+    if (currentFile) {
+      setStatus('loading', `⏳ Re-rendering ${currentFile} …`);
+      await openFile(currentFile);
+    }
+    ctrl.setDisplayAnchor(templateAnchors[(currentPage || 0).toString()] || null);
+    setStatus('success', `✓ Session loaded from "${file.name}" — ${allFiles.length} document(s).`);
+    setTimeout(clearStatus, 3000);
+  } catch(e) {
+    setStatus('error', `Failed to load session: ${e.message}`);
+  }
+});
+
+// New session
+document.getElementById('btn-new-session').addEventListener('click', () => {
+  if (!confirm('Start a new session? All loaded documents, zones and the template will be cleared.')) return;
+  localStorage.removeItem(STATE_KEY);
+  dirPath=''; allFiles=[]; zones={}; fileStatus={}; renderedPages={}; removedPages={};
+  currentFile=null; currentPage=0; templateZones=null; templateSourcePath=null; templateAnchors={};
+  ctrl.clearDisplayAnchor();
+  document.getElementById('path-input').value='';
+  document.getElementById('out-dir').value='';
+  document.getElementById('file-list').innerHTML='';
+  document.getElementById('file-list-head').textContent='Files (0)';
+  document.getElementById('doc-name').textContent='No document loaded';
+  document.getElementById('page-indicator').textContent='—';
+  document.getElementById('zones-page-label').textContent='—';
+  document.getElementById('editor-placeholder').hidden=false;
+  document.getElementById('canvas-wrap').hidden=true;
+  document.getElementById('zone-list').innerHTML='';
+  document.getElementById('btn-save-all').disabled=true;
+  updateTemplateBadge(); updateButtons();
+});
+
+// Clear template
+document.getElementById('btn-tmpl-clear').addEventListener('click', () => {
+  templateMenu.hidden = true;
+  if (!templateZones) return;
+  templateZones = null; templateSourcePath = null;
+  updateTemplateBadge(); updateButtons(); saveState();
+  setStatus('info', 'Template cleared.');
+  setTimeout(clearStatus, 2000);
+});
+
+// Save as template
+document.getElementById('btn-tmpl-save').addEventListener('click', () => {
+  templateMenu.hidden = true;
+  if (!currentFile) return;
+  templateZones      = deepCopy(zones[currentFile]||{});
+  templateSourcePath = dirPath.replace(/\/?$/,'/') + currentFile;
+  const n = Object.values(templateZones).reduce((s,z)=>s+z.length,0);
+  const pages = Object.keys(templateZones).filter(k=>templateZones[k].length>0).length;
+  updateTemplateBadge(); updateButtons(); saveState();
+  setStatus('success', `✓ Template saved from "${currentFile}": ${n} zone(s) across ${pages} page(s)`);
+  setTimeout(clearStatus, 3000);
+});
+
+// ── alignment helper ───────────────────────────────────────────────────────
+async function alignedZonesFor(targetFilename) {
+  if (!templateAnchors || Object.keys(templateAnchors).length === 0 || !templateSourcePath)
+    return deepCopy(templateZones);
+  const targetPath = dirPath.replace(/\/?$/, '/') + targetFilename;
+  try {
+    const res = await fetch('/align_zones', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        template_doc_path: templateSourcePath,
+        template_zones: templateZones,
+        target_doc_path: targetPath,
+        page_anchors: templateAnchors,
+      }),
+    });
+    if (!res.ok) {
+      console.warn(`align_zones server error ${res.status} for "${targetFilename}" — using template zones directly`);
+      return deepCopy(templateZones);
+    }
+    const data = await res.json();
+    if (!data.zones || Object.keys(data.zones).length === 0) {
+      console.warn(`align_zones returned no zones for "${targetFilename}" — using template zones directly`);
+      return deepCopy(templateZones);
+    }
+    if (data.aligned) {
+      console.log(`Aligned "${targetFilename}": ${data.aligned_pages} page(s) aligned, ${data.fallback_pages} fallback`);
+    }
+    return data.zones;
+  } catch(e) {
+    console.warn('align_zones failed:', e);
+    return deepCopy(templateZones);
+  }
+}
+
+// Apply to this document
+document.getElementById('btn-tmpl-apply-here').addEventListener('click', async () => {
+  templateMenu.hidden = true;
+  if (!currentFile || !templateZones) return;
+  const n = Object.values(templateZones).reduce((s,z)=>s+z.length,0);
+  const anchorCount = Object.keys(templateAnchors || {}).length;
+  const alignNote = anchorCount > 0 ? `\nAlignment anchors set for ${anchorCount} page(s) — zones will shift to match.` : '';
+  if (!confirm(`Apply template (${n} zone(s)) to "${currentFile}"?${alignNote}\nThis will replace existing zones on affected pages.`)) return;
+  if (anchorCount > 0) setStatus('loading', `⏳ Aligning zones for "${currentFile}" …`);
+  const aligned = await alignedZonesFor(currentFile);
+  if (aligned && Object.keys(aligned).length > 0) zones[currentFile] = aligned;
+  if (!fileStatus[currentFile]) fileStatus[currentFile]='pending';
+  ctrl.resetHistory(); ctrl.redraw(); renderZoneList(); renderFileList(); updateButtons(); saveState();
+  setStatus('success', `✓ Template applied to "${currentFile}"${templateAnchor?' (with alignment)':''}`);
+  setTimeout(clearStatus, 3000);
+});
+
+// Apply to all documents
+document.getElementById('btn-tmpl-apply-all').addEventListener('click', async () => {
+  templateMenu.hidden = true;
+  if (!templateZones || allFiles.length === 0) return;
+  const n = Object.values(templateZones).reduce((s,z)=>s+z.length,0);
+  const anchorCount2 = Object.keys(templateAnchors || {}).length;
+  const alignNote2 = anchorCount2 > 0 ? `\nPer-page alignment active on ${anchorCount2} page(s) — zones will shift per document.` : '';
+  if (!confirm(`Apply template (${n} zone(s)) to ALL ${allFiles.length} document(s)?${alignNote2}\nThis will replace existing zones on affected pages in every document.`)) return;
+  let aligned=0, fallback=0;
+  for (let i=0; i<allFiles.length; i++) {
+    const f = allFiles[i];
+    if (anchorCount2 > 0) setStatus('loading', `⏳ Aligning ${i+1}/${allFiles.length}: ${f} …`);
+    const z = await alignedZonesFor(f);
+    if (!z || Object.keys(z).length === 0) {
+      console.warn(`alignedZonesFor returned empty for "${f}" — skipping`);
+      fallback++;
+      continue;
+    }
+    const wasAligned = anchorCount2 > 0 && JSON.stringify(z) !== JSON.stringify(templateZones);
+    wasAligned ? aligned++ : fallback++;
+    zones[f] = z;
+    if (!fileStatus[f]) fileStatus[f]='pending';
+  }
+  ctrl.resetHistory(); ctrl.redraw(); renderZoneList(); renderFileList(); updateButtons(); saveState();
+  const summary = anchorCount2 > 0
+    ? `✓ Applied to all ${allFiles.length} docs — ${aligned} aligned, ${fallback} direct stamp`
+    : `✓ Template applied to all ${allFiles.length} document(s)`;
+  setStatus('success', summary);
+  setTimeout(clearStatus, 5000);
+});
+
+// ============================================================
+// Save
+// ============================================================
+document.getElementById('btn-save-doc').addEventListener('click', () => saveDocs([currentFile]));
+document.getElementById('btn-save-all').addEventListener('click', () => {
+  const toSave = allFiles.filter(f => Object.values(zones[f]||{}).some(z=>z.length>0));
+  if (!toSave.length) { setStatus('error','No zones defined on any document.'); return; }
+  saveDocs(toSave);
+});
+
+async function saveDocs(files) {
+  const outDir = document.getElementById('out-dir').value.trim();
+  if (!outDir) { setStatus('error','Please enter an output directory.'); return; }
+  const total = files.reduce((s,f)=>s+Object.values(zones[f]||{}).reduce((ss,z)=>ss+z.length,0),0);
+  const totalRemoved = files.reduce((s,f)=>s+(removedPages[f]?.size||0),0);
+  const removeNote = totalRemoved > 0 ? `\n${totalRemoved} page(s) will be removed.` : '';
+  if (!confirm(`Redact ${files.length} document(s) with ${total} total zone(s)\nand save to: ${outDir}${removeNote}`)) return;
+  setStatus('loading', `⏳ Processing ${files.length} document(s) …`);
+  try {
+    const docs = {};
+    const pagesToRemove = {};
+    files.forEach(f => {
+      docs[f] = zones[f]||{};
+      if (removedPages[f] && removedPages[f].size > 0) pagesToRemove[f] = [...removedPages[f]];
+    });
+    const res = await fetch('/batch_redact', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({dir_path: dirPath, out_dir: outDir, docs, pages_to_remove: pagesToRemove}) });
+    if (!res.ok) throw new Error((await res.json()).detail);
+    const data = await res.json();
+    data.results.forEach(r => { if (fileStatus[r.file]!==undefined) fileStatus[r.file]=r.status==='ok'?'done':'error'; });
+    renderFileList();
+    setStatus('success', `✓ Done — ${data.ok}/${data.processed} saved to ${outDir}`);
+  } catch(e) { setStatus('error','Error: ' + e.message); }
+}
+
+// ============================================================
+// Zoom
+// ============================================================
+let currentZoom = 0.5;
+function applyZoom(z) {
+  currentZoom = Math.max(0.15, Math.min(3, z));
+  ctrl.applyZoom(currentZoom);
+  document.getElementById('zoom-label').textContent = Math.round(currentZoom*100) + '%';
+}
+document.getElementById('btn-zoom-in').addEventListener('click',  () => applyZoom(currentZoom+0.25));
+document.getElementById('btn-zoom-out').addEventListener('click', () => applyZoom(currentZoom-0.25));
+document.getElementById('btn-zoom-fit').addEventListener('click', () => {
+  const img = document.getElementById('page-img');
+  if (!img.naturalWidth) return;
+  applyZoom((document.getElementById('canvas-scroll').clientWidth - 60) / img.naturalWidth);
+});
+document.querySelectorAll('.zoom-preset[data-zoom]').forEach(b => {
+  b.addEventListener('click', () => applyZoom(parseFloat(b.dataset.zoom)));
+});
+
+// ============================================================
+// Keyboard shortcuts
+// ============================================================
+document.addEventListener('keydown', e => {
+  if (document.getElementById('explorer-overlay').classList.contains('open')) return;
+  if (e.target.tagName==='INPUT') return;
+  if ((e.ctrlKey||e.metaKey) && e.key==='z' && !e.shiftKey) { e.preventDefault(); ctrl.undo(); updateButtons(); }
+  if ((e.ctrlKey||e.metaKey) && (e.key==='y'||(e.key==='z'&&e.shiftKey))) { e.preventDefault(); ctrl.redo(); updateButtons(); }
+  if (e.key==='d'||e.key==='D') setMode('draw');
+  if (e.key==='m'||e.key==='M') setMode('move');
+  if (e.key==='e'||e.key==='E') setMode('erase');
+  if (e.key==='c'||e.key==='C') document.getElementById('btn-mode-cleararea').click();
+  if (e.key==='+'||e.key==='=') applyZoom(currentZoom+0.25);
+  if (e.key==='-') applyZoom(currentZoom-0.25);
+});
+
+// ============================================================
+// File Explorer
+// ============================================================
+let explorerCallback     = null;
+let explorerCurrent      = '';
+let explorerMultiSelect  = false;
+let explorerSelected     = new Set();
+let explorerLastClickIdx = -1;
+let explorerFileItems    = [];   // DOM elements for files in current directory
+
+async function openExplorer(startPath, callback, multiSelect = false) {
+  explorerCallback     = callback;
+  explorerMultiSelect  = multiSelect;
+  explorerSelected     = new Set();
+  explorerLastClickIdx = -1;
+  explorerFileItems    = [];
+  const loadBtn = document.getElementById('btn-exp-load-selected');
+  loadBtn.hidden   = !multiSelect;
+  loadBtn.disabled = true;
+  loadBtn.textContent = '✓ Load selected (0)';
+  document.getElementById('explorer-title').textContent = multiSelect
+    ? 'Select PDF files' : 'Select PDF file or folder';
+  document.getElementById('explorer-hint').textContent = multiSelect
+    ? 'Click to select · Ctrl+click to toggle · Shift+click for range · double-click to load one'
+    : 'Click a PDF to open it, or navigate and click "Select this folder".';
+  document.getElementById('explorer-overlay').classList.add('open');
+  await explorerNav(startPath || '');
+}
+
+function updateLoadSelectedBtn() {
+  const btn = document.getElementById('btn-exp-load-selected');
+  const n = explorerSelected.size;
+  btn.textContent = `✓ Load selected (${n})`;
+  btn.disabled = n === 0;
+}
+
+async function explorerNav(path) {
+  const res = await fetch('/browse', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path}) });
+  const data = await res.json();
+  explorerCurrent = data.current;
+  document.getElementById('explorer-path-text').textContent = data.current;
+  const list = document.getElementById('explorer-list');
+  list.innerHTML = '';
+  if (data.parent) {
+    const up = document.createElement('div');
+    up.className='exp-item exp-dir exp-up';
+    up.innerHTML=`<span class="exp-icon">⬆️</span><span class="exp-name">.. (up)</span>`;
+    up.addEventListener('click', () => explorerNav(data.parent));
+    list.appendChild(up);
+  }
+  data.dirs.forEach(d => {
+    const item=document.createElement('div'); item.className='exp-item exp-dir';
+    item.innerHTML=`<span class="exp-icon">📁</span><span class="exp-name">${d.name}</span>`;
+    item.addEventListener('click', () => explorerNav(d.path));
+    list.appendChild(item);
+  });
+  explorerFileItems = [];
+  data.files.forEach(f => {
+    const item = document.createElement('div');
+    item.className = 'exp-item exp-file';
+    item.dataset.path = f.path;
+    if (explorerMultiSelect && explorerSelected.has(f.path)) item.classList.add('exp-selected');
+    item.innerHTML = `<span class="exp-icon">📄</span><span class="exp-name">${f.name}</span>`;
+
+    if (explorerMultiSelect) {
+      item.addEventListener('click', e => {
+        const idx = explorerFileItems.indexOf(item);
+        if (e.shiftKey && explorerLastClickIdx >= 0) {
+          // range select
+          const lo = Math.min(idx, explorerLastClickIdx);
+          const hi = Math.max(idx, explorerLastClickIdx);
+          if (!e.ctrlKey && !e.metaKey) {
+            explorerSelected.clear();
+            explorerFileItems.forEach(it => it.classList.remove('exp-selected'));
+          }
+          for (let i = lo; i <= hi; i++) {
+            const it = explorerFileItems[i];
+            explorerSelected.add(it.dataset.path);
+            it.classList.add('exp-selected');
+          }
+        } else if (e.ctrlKey || e.metaKey) {
+          // toggle
+          if (explorerSelected.has(f.path)) {
+            explorerSelected.delete(f.path);
+            item.classList.remove('exp-selected');
+          } else {
+            explorerSelected.add(f.path);
+            item.classList.add('exp-selected');
+          }
+        } else {
+          // plain click: clear and select only this
+          explorerSelected.clear();
+          explorerFileItems.forEach(it => it.classList.remove('exp-selected'));
+          explorerSelected.add(f.path);
+          item.classList.add('exp-selected');
+        }
+        explorerLastClickIdx = idx;
+        updateLoadSelectedBtn();
+      });
+      item.addEventListener('dblclick', () => {
+        explorerCallback([f.path], 'files');
+        closeExplorer();
+      });
+    } else {
+      item.addEventListener('click', () => { explorerCallback(f.path, 'file'); closeExplorer(); });
+    }
+
+    explorerFileItems.push(item);
+    list.appendChild(item);
+  });
+}
+
+function closeExplorer() {
+  document.getElementById('explorer-overlay').classList.remove('open');
+  document.getElementById('new-folder-row').hidden = true;
+  document.getElementById('new-folder-name').value = '';
+  explorerSelected     = new Set();
+  explorerFileItems    = [];
+  explorerLastClickIdx = -1;
+}
+
+document.getElementById('btn-exp-load-selected').addEventListener('click', () => {
+  if (explorerSelected.size === 0) return;
+  explorerCallback([...explorerSelected], 'files');
+  closeExplorer();
+});
+
+// New folder
+document.getElementById('btn-exp-new-folder').addEventListener('click', () => {
+  const row = document.getElementById('new-folder-row');
+  row.hidden = false;
+  document.getElementById('new-folder-name').focus();
+});
+document.getElementById('btn-new-folder-cancel').addEventListener('click', () => {
+  document.getElementById('new-folder-row').hidden = true;
+  document.getElementById('new-folder-name').value = '';
+});
+async function createNewFolder() {
+  const name = document.getElementById('new-folder-name').value.trim();
+  if (!name) return;
+  const newPath = explorerCurrent.replace(/\/?$/,'/') + name;
+  try {
+    const res = await fetch('/mkdir', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: newPath}) });
+    if (!res.ok) throw new Error((await res.json()).detail);
+    document.getElementById('new-folder-row').hidden = true;
+    document.getElementById('new-folder-name').value = '';
+    await explorerNav(newPath);
+  } catch(e) { alert('Could not create folder: ' + e.message); }
+}
+document.getElementById('btn-new-folder-confirm').addEventListener('click', createNewFolder);
+document.getElementById('new-folder-name').addEventListener('keydown', e => { if (e.key==='Enter') createNewFolder(); if (e.key==='Escape') { document.getElementById('new-folder-row').hidden=true; document.getElementById('new-folder-name').value=''; } });
+document.getElementById('btn-exp-cancel').addEventListener('click', closeExplorer);
+document.getElementById('explorer-overlay').addEventListener('click', e => { if (e.target===document.getElementById('explorer-overlay')) closeExplorer(); });
+document.getElementById('btn-exp-select-dir').addEventListener('click', () => { explorerCallback(explorerCurrent, 'dir'); closeExplorer(); });
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape') {
+    if (document.getElementById('explorer-overlay').classList.contains('open')) closeExplorer();
+    document.getElementById('manual-overlay').classList.remove('open');
+  }
+});
+
+document.getElementById('btn-browse').addEventListener('click', () => {
+  openExplorer(document.getElementById('path-input').value.trim(), async (path, type) => {
+    if (type === 'files') {
+      // multi-file selection
+      for (const p of path) await loadSingleFile(p);
+    } else {
+      document.getElementById('path-input').value = path;
+      loadPath();
+    }
+  }, true);
+});
+document.getElementById('btn-browse-out').addEventListener('click', () => {
+  openExplorer(document.getElementById('out-dir').value.trim(), (path, type) => {
+    document.getElementById('out-dir').value = path;
+  });
+});
+
+// ============================================================
+// Intelligent alignment anchor
+// ============================================================
+let pendingAnchorZone = null;
+
+document.getElementById('btn-tmpl-set-anchor').addEventListener('click', () => {
+  templateMenu.hidden = true;
+  if (!currentFile || !(renderedPages[currentFile]||[]).length) return;
+  setStatus('info', `🎯 Draw a box around the anchor text on page ${currentPage+1}, then type the text in the popup.`);
+  document.getElementById('draw-canvas').classList.add('anchor-mode-active');
+  ctrl.enterAnchorMode(zone => {
+    pendingAnchorZone = zone;
+    document.getElementById('draw-canvas').classList.remove('anchor-mode-active');
+    setMode('draw');
+    showAnchorPopover(zone);
+  });
+});
+
+function showAnchorPopover(zone) {
+  const popover = document.getElementById('anchor-input-popover');
+  const img = document.getElementById('page-img');
+  const imgRect = img.getBoundingClientRect();
+  const boxTop    = imgRect.top  + zone.y * imgRect.height;
+  const boxLeft   = imgRect.left + zone.x * imgRect.width;
+  const boxBottom = boxTop + zone.h * imgRect.height;
+  popover.removeAttribute('hidden');
+  let top  = boxBottom + 8;
+  if (top + 170 > window.innerHeight) top = boxTop - 170;
+  let left = boxLeft;
+  if (left + 270 > window.innerWidth) left = window.innerWidth - 278;
+  popover.style.top  = Math.max(8, top) + 'px';
+  popover.style.left = Math.max(8, left) + 'px';
+  const inp = document.getElementById('anchor-input-text');
+  inp.value = templateAnchors?.[currentPage.toString()]?.text || '';
+  inp.focus();
+}
+
+function confirmAnchor() {
+  const text = document.getElementById('anchor-input-text').value.trim();
+  if (!text) { document.getElementById('anchor-input-text').focus(); return; }
+  if (!templateAnchors) templateAnchors = {};
+  templateAnchors[currentPage.toString()] = { ...pendingAnchorZone, text };
+  pendingAnchorZone = null;
+  document.getElementById('anchor-input-popover').setAttribute('hidden', '');
+  ctrl.setDisplayAnchor(templateAnchors[currentPage.toString()]);
+  clearStatus();
+  updateTemplateBadge(); updateButtons(); saveState();
+  setStatus('success', `✓ Anchor set for page ${currentPage+1}: "${text}"`);
+  setTimeout(clearStatus, 3000);
+}
+
+function cancelAnchor() {
+  pendingAnchorZone = null;
+  document.getElementById('anchor-input-popover').setAttribute('hidden', '');
+  ctrl.clearDisplayAnchor();
+  clearStatus();
+}
+
+document.getElementById('btn-anchor-confirm').addEventListener('click', confirmAnchor);
+document.getElementById('btn-anchor-cancel').addEventListener('click', cancelAnchor);
+document.getElementById('anchor-input-text').addEventListener('keydown', e => {
+  if (e.key === 'Enter')  confirmAnchor();
+  if (e.key === 'Escape') cancelAnchor();
+});
+
+document.getElementById('btn-tmpl-clear-anchor').addEventListener('click', () => {
+  templateMenu.hidden = true;
+  delete templateAnchors[currentPage.toString()];
+  ctrl.setDisplayAnchor(null);
+  updateTemplateBadge(); updateButtons(); saveState();
+  setStatus('info', `Anchor for page ${currentPage+1} cleared.`);
+  setTimeout(clearStatus, 2000);
+});
+
+// ============================================================
+// Tooltip
+// ============================================================
+const _tip = document.getElementById('tooltip');
+let _tipTimer = null;
+
+document.addEventListener('mouseover', e => {
+  const el = e.target.closest('[data-tip]');
+  if (!el) return;
+  clearTimeout(_tipTimer);
+  _tipTimer = setTimeout(() => {
+    _tip.textContent = el.dataset.tip;
+    _tip.className = '';
+    _tip.style.display = 'block';
+    const r = el.getBoundingClientRect();
+    const tw = _tip.offsetWidth, th = _tip.offsetHeight, margin = 8;
+    let top, cls;
+    if (r.top - th - margin - 10 > 0) { top = r.top - th - margin; cls = 'above'; }
+    else                               { top = r.bottom + margin;   cls = 'below'; }
+    let left = r.left + r.width/2 - tw/2;
+    left = Math.max(8, Math.min(window.innerWidth - tw - 8, left));
+    _tip.style.top = top + 'px'; _tip.style.left = left + 'px';
+    _tip.className = cls + ' visible';
+  }, 160);
+});
+document.addEventListener('mouseout', e => {
+  if (!e.target.closest('[data-tip]')) return;
+  clearTimeout(_tipTimer);
+  _tip.className = (_tip.className || '').replace('visible','').trim();
+});
+document.addEventListener('scroll',    () => { clearTimeout(_tipTimer); _tip.className = ''; }, true);
+document.addEventListener('mousedown', () => { clearTimeout(_tipTimer); _tip.className = ''; });
+
+// ============================================================
+// Manual modal
+// ============================================================
+document.getElementById('btn-open-manual').addEventListener('click', () =>
+  document.getElementById('manual-overlay').classList.add('open'));
+document.getElementById('btn-close-manual').addEventListener('click', () =>
+  document.getElementById('manual-overlay').classList.remove('open'));
+document.getElementById('manual-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('manual-overlay'))
+    document.getElementById('manual-overlay').classList.remove('open');
+});
+
+// ============================================================
+// Restore on load
+// ============================================================
+restoreState();
+
+// ============================================================
+// Resize
+// ============================================================
+window.addEventListener('resize', () => {
+  const img = document.getElementById('page-img');
+  if (img.offsetWidth) { ctrl.syncCanvasSize(); ctrl.redraw(); }
+});
+</script>
+</body>
+</html>
