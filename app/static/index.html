@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARCH Document Extractor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+
+<!-- ===== TOP BAR ===== -->
+<div id="topbar">
+  <h1>ARCH Extractor</h1>
+  <select id="doc-select"><option value="">— select document —</option></select>
+  <div id="page-controls">
+    <button id="prev-page">◀</button>
+    <span id="page-info">— / —</span>
+    <button id="next-page">▶</button>
+  </div>
+  <span class="spacer"></span>
+  <label class="top-label">Max pages <input id="max-pages" type="number" min="1" max="20" value="6"></label>
+  <div id="vlm-status">VLM: checking…</div>
+  <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
+</div>
+
+<!-- ===== SETTINGS DRAWER ===== -->
+<div id="settings-drawer" class="hidden">
+  <div class="drawer-title">Settings</div>
+  <div class="setting-row">
+    <label>PDF directory</label>
+    <input id="cfg-pdf-dir" type="text" placeholder="/path/to/pdfs">
+    <button class="btn" id="btn-browse-pdf">📁 Browse</button>
+  </div>
+  <div class="setting-row">
+    <label>Labels Excel (ground truth)</label>
+    <input id="cfg-labels-xlsx" type="text" placeholder="/path/to/labels.xlsx">
+    <button class="btn" id="btn-browse-labels">📁 Browse</button>
+  </div>
+  <div class="setting-row">
+    <label>VLM server URL</label>
+    <input id="cfg-vlm-url" type="text" placeholder="http://127.0.0.1:8081">
+  </div>
+  <div class="setting-row">
+    <button class="btn primary" id="btn-save-config">Apply</button>
+    <span id="cfg-status" style="font-size:11px;color:#888;margin-left:8px"></span>
+  </div>
+</div>
+
+<!-- ===== MAIN ===== -->
+<div id="main">
+
+  <!-- PDF pane -->
+  <div id="pdf-pane">
+    <div id="pdf-viewport"><canvas id="pdf-canvas"></canvas></div>
+  </div>
+
+  <!-- Data pane -->
+  <div id="data-pane">
+    <div id="tabs">
+      <div class="tab active" data-tab="extract">Extraction</div>
+      <div class="tab" data-tab="batch">Batch</div>
+      <div class="tab" data-tab="chat">Chat</div>
+    </div>
+
+    <!-- ---- EXTRACTION TAB ---- -->
+    <div id="tab-extract" class="tab-panel active">
+
+      <!-- Toolbar row 1: model actions -->
+      <div class="toolbar">
+        <div class="btn-group">
+          <button class="btn primary" id="btn-extract">⚡ Extract</button>
+          <button class="btn" id="btn-reextract" disabled>🔄 Re-extract</button>
+          <button class="btn" id="btn-compare" disabled>⚖ Compare</button>
+        </div>
+        <div class="btn-group">
+          <button class="btn" id="btn-save" disabled title="Save (Ctrl+S)">💾 Save</button>
+          <button class="btn" id="btn-save-as" disabled title="Save As…">📋 Save As…</button>
+        </div>
+        <div class="btn-group">
+          <button class="btn" id="btn-undo" disabled title="Undo (Ctrl+Z)">↩ Undo</button>
+          <button class="btn" id="btn-redo" disabled title="Redo (Ctrl+Y)">↪ Redo</button>
+          <button class="btn" id="btn-reset" disabled title="Reset all edits to original extraction">⟳ Reset</button>
+        </div>
+        <span class="spacer"></span>
+        <label class="top-label" id="compare-mode-label" style="display:none">
+          <input type="checkbox" id="chk-compare-mode" checked> Ground truth
+        </label>
+      </div>
+
+      <!-- Accuracy bar -->
+      <div id="accuracy-bar" class="hidden">
+        <span>Accuracy</span>
+        <div class="acc-track"><div id="acc-fill"></div></div>
+        <span id="acc-pct">—</span>
+        <span id="acc-counts" style="font-size:10px;color:#888"></span>
+      </div>
+
+      <!-- Undo status hint -->
+      <div id="undo-hint" class="hidden"></div>
+
+      <!-- Editable grid -->
+      <div id="grid-container">
+        <p class="text-muted">Select a document and click ⚡ Extract.</p>
+      </div>
+    </div>
+
+    <!-- ---- BATCH TAB ---- -->
+    <div id="tab-batch" class="tab-panel">
+      <div class="batch-toolbar">
+        <button class="btn primary" id="btn-batch-extract">⚡ Extract Selected</button>
+        <button class="btn" id="btn-batch-save-all" disabled>💾 Save All to Excel</button>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-select-all">☑ All</button>
+        <button class="btn" id="btn-select-none">☐ None</button>
+        <span id="batch-sel-count" style="font-size:11px;color:#888;margin-left:6px"></span>
+      </div>
+      <div id="batch-progress" class="hidden">
+        <div class="bp-label" id="bp-label">—</div>
+        <div class="bp-track"><div id="bp-fill"></div></div>
+        <span id="bp-pct"></span>
+      </div>
+      <div id="batch-list-container"><p class="text-muted">Loading documents…</p></div>
+    </div>
+
+    <!-- ---- CHAT TAB ---- -->
+    <div id="tab-chat" class="tab-panel">
+      <div id="chat-messages"><p class="text-muted">Ask anything about the current document.</p></div>
+      <div id="chat-input-row">
+        <textarea id="chat-input" placeholder="Type a question… (Enter to send)" rows="1"></textarea>
+        <button class="btn primary" id="btn-send">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== DIRECTORY BROWSER MODAL ===== -->
+<div id="dir-modal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Choose Folder</span>
+      <button class="icon-btn" id="btn-modal-close">✕</button>
+    </div>
+    <div class="modal-breadcrumb" id="modal-breadcrumb"></div>
+    <div class="modal-body" id="modal-body"><p class="text-muted">Loading…</p></div>
+    <div class="modal-footer">
+      <span id="modal-pdf-count" style="font-size:11px;color:#888"></span>
+      <span class="spacer"></span>
+      <button class="btn primary" id="btn-modal-select">Use this folder</button>
+      <button class="btn" id="btn-modal-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SAVE AS MODAL ===== -->
+<div id="save-as-modal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Save As</span>
+      <button class="icon-btn" id="btn-saveas-close">✕</button>
+    </div>
+    <div style="padding:12px 14px;border-bottom:1px solid #0f3460;flex-shrink:0">
+      <div class="setting-row">
+        <label>Folder</label>
+        <input id="saveas-dir" type="text" placeholder="/path/to/folder" readonly style="flex:1;cursor:pointer" title="Click Browse to choose">
+        <button class="btn" id="btn-saveas-browse">📁 Browse</button>
+      </div>
+      <div class="setting-row" style="margin-top:8px">
+        <label>Filename</label>
+        <input id="saveas-name" type="text" placeholder="results.xlsx" style="flex:1">
+        <span style="font-size:11px;color:#555;margin-left:4px">.xlsx</span>
+      </div>
+      <div class="setting-row" style="margin-top:4px">
+        <label style="visibility:hidden">x</label>
+        <span id="saveas-fullpath" style="font-size:11px;color:#888;flex:1;word-break:break-all"></span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span id="saveas-status" style="font-size:11px;color:#888"></span>
+      <span class="spacer"></span>
+      <button class="btn primary" id="btn-saveas-confirm">💾 Save</button>
+      <button class="btn" id="btn-saveas-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Spinner -->
+<div id="spinner"><span class="spin-icon">⏳</span><span id="spinner-msg">Working…</span></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
