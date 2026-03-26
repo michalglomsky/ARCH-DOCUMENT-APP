@@ -4,45 +4,64 @@ Automated extraction of structured data from Polish construction permit applicat
 
 ---
 
-## What it does
+## Tools
 
-Given a scanned PDF of a construction permit application, the model extracts:
+### Extraction tool — `./start.sh`
 
-- Permit number, fill method, investment name, address, plot description
-- Built-up area, facade width, floor counts, building height, roof geometry — per building
-- Utilities (water, electricity, gas, heating, sewage)
+Browser UI that sends scanned PDFs to a local VLM and extracts structured data into an Excel spreadsheet.
 
-Output is a structured JSON that maps directly to the master Excel spreadsheet (`Project Files/1-2026-DANE.xlsx`).
+- Starts two servers: a **VLM server** (port 8081) loading Qwen2.5-VL and an **app server** (port 8000) serving the browser UI
+- Extracts: permit number, fill method, investment name, address, plot description, built-up area, facade width, floor counts, building height, roof geometry, utilities
+- Output maps directly to the master Excel spreadsheet
+
+```bash
+./start.sh                              # zero-shot model
+./start.sh --lora-adapter path/to/out   # with LoRA fine-tuned adapter
+./start.sh --port-app 8001              # custom port
+./start.sh --max-pages 4                # limit pages per inference
+```
+
+Open `http://localhost:8000` in your browser.
 
 ---
 
-## Two parallel pipelines
+### Manual redaction tool — `./run_manual_redaction.sh`
 
-This repo contains two independent fine-tuning approaches. Both use the same base model and the same source PDFs — the difference is in how training data is structured.
+Browser UI for drawing redaction boxes over PDF pages and saving redacted copies.
 
-### `pipeline/page-level` — Original approach
-Guide: `PIPELINE_GUIDE.md`
+- Renders PDF pages in the browser; click and drag to draw redaction zones
+- Supports batch redaction across a whole directory of PDFs
+- Redacted files are saved with a `.redacted.pdf` suffix
 
-- Processes one **page image at a time**
-- Extracts a flat JSON per page, merges results across pages
-- Labels must be created manually (or bootstrapped via Nanonets)
-- Good starting point; simpler data pipeline
+```bash
+./run_manual_redaction.sh
+```
 
-### `pipeline/qa-pairs` — QA-pair approach (recommended)
-Guide: `QA_PIPELINE_GUIDE.md`
+Open `http://localhost:8083` in your browser. See `manual_redaction/MANUAL_REDACTION_GUIDE.md` for full usage.
 
-- Processes all pages of a document **in a single model call**
-- Uses `1-2026-DANE.xlsx` directly as ground truth — no manual labeling needed
-- Outputs nested JSON with a `budynki` list (one entry per building) and a `media` list
-- Better cross-page context; handles multi-building forms natively
+---
 
-| | Page-level | QA-pairs |
-|---|---|---|
-| Training unit | Single page | Full document |
-| Labels | Manual / Nanonets | Already in Excel |
-| Multi-building forms | Merge heuristic | Native list |
-| Cross-page context | None | Full document |
-| Ready to train immediately | No (labeling required) | Yes |
+## Fine-tuning pipeline
+
+The QA-pair pipeline fine-tunes the model on your own labeled documents.
+
+### 1. Build the dataset — `./run_preprocess.sh`
+
+Renders PDF pages to images and builds `train.jsonl` / `val.jsonl` / `test.jsonl` from the master Excel file (`1-2026-DANE.xlsx`). No manual labeling needed — the Excel is used directly as ground truth.
+
+```bash
+./run_preprocess.sh
+```
+
+### 2. Fine-tune
+
+See `finetune_qwen_vl_qa/FINETUNING_GUIDE.md` for the full training workflow.
+
+### 3. Run with adapter
+
+```bash
+./start.sh --lora-adapter finetune_qwen_vl_qa/out/final_adapter
+```
 
 ---
 
@@ -50,30 +69,35 @@ Guide: `QA_PIPELINE_GUIDE.md`
 
 ```
 ARCH-DOCUMENT-APP/
-├── Project Files/
-│   ├── 1-2026-DANE.xlsx          ← master label spreadsheet (tracked in git)
-│   └── wz_*.pdf                  ← source permit PDFs (not tracked, too large)
-├── finetune_qwen_vl_pytorch/     ← page-level pipeline code
+├── app/                              ← extraction app server + browser UI
+│   ├── server.py
+│   ├── excel_utils.py
+│   └── static/
+├── manual_redaction/                 ← manual redaction tool
+│   ├── app.py
+│   ├── static/
+│   └── MANUAL_REDACTION_GUIDE.md
+├── finetune_qwen_vl_qa/              ← QA-pair fine-tuning pipeline
 │   ├── scripts/
-│   ├── train/
-│   └── requirements.txt
-├── finetune_qwen_vl_qa/          ← QA-pair pipeline code
-│   ├── scripts/
-│   ├── train/
-│   └── requirements.txt
-├── demo_app/                     ← batch PDF → Excel runner + Nanonets comparison
-├── PIPELINE_GUIDE.md             ← step-by-step for page-level pipeline
-├── QA_PIPELINE_GUIDE.md          ← step-by-step for QA-pair pipeline
-└── README.md                     ← this file
+│   │   ├── build_dataset.py          ← dataset builder
+│   │   ├── qa_utils.py
+│   │   └── serve_vlm_qa.py           ← VLM inference server
+│   └── FINETUNING_GUIDE.md
+├── finetune_qwen_vl_pytorch/         ← page-level pipeline (older approach)
+├── start.sh                          ← start extraction tool
+├── run_manual_redaction.sh           ← start redaction tool
+├── run_preprocess.sh                 ← build fine-tuning dataset
+├── PIPELINE_GUIDE.md                 ← page-level pipeline guide
+├── QA_PIPELINE_GUIDE.md              ← QA-pair pipeline guide
+└── README.md
 ```
 
 ---
 
 ## Prerequisites
 
-- macOS with Apple Silicon (MPS) — tested on M3 Ultra 96 GB
+- macOS with Apple Silicon — tested on M3 Ultra 96 GB
 - Python 3.11
-- PDFs in `Project Files/` (not committed to git)
 
 ```bash
 brew install python@3.11
@@ -81,26 +105,7 @@ brew install python@3.11
 source finetune_qwen_vl_pytorch/.venv311/bin/activate
 pip install -r finetune_qwen_vl_pytorch/requirements.txt
 pip install -U "git+https://github.com/huggingface/transformers"
-pip install openpyxl  # required for QA-pair pipeline only
+pip install openpyxl
 ```
 
----
-
-## Where to start
-
-- **To understand the full workflow:** read `QA_PIPELINE_GUIDE.md` — it is the more complete and easier-to-run pipeline since labels are already available in the Excel file.
-- **To compare approaches:** run both pipelines to the evaluation step and open the resulting `.xlsx` files side by side.
-- **To run inference on new PDFs:** start the server from either pipeline and POST a PDF path to `/extract`.
-
----
-
-## Branches
-
-| Branch | Description |
-|--------|-------------|
-| `main` | Shared files: guides, `.gitignore`, README |
-| `pipeline/page-level` | Page-level pipeline code |
-| `pipeline/qa-pairs` | QA-pair pipeline code |
-| `demo_1_ocr` | Original repo state (backup) |
-
-When a pipeline is ready for production, merge its branch into `main` via a pull request.
+PDFs go in `Project Files/` — they are not tracked in git.
