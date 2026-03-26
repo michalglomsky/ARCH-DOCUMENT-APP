@@ -1,0 +1,57 @@
+services:
+
+  # ── VLM inference server ─────────────────────────────────────────────────
+  # Loads Qwen2.5-VL-7B (~15 GB download on first run, cached in hf-cache volume).
+  # Requires an NVIDIA GPU with the NVIDIA Container Toolkit installed.
+  vlm-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.vlm
+    ports:
+      - "8081:8081"
+    volumes:
+      - hf-cache:/hf-cache          # model weights cache — survives container restarts
+      - ${PDF_DIR:-./Project Files}:/data   # mount your PDF folder here
+    environment:
+      - HF_HOME=/hf-cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # ── Browser extraction UI ────────────────────────────────────────────────
+  # Open http://localhost:8000 after both services are ready.
+  app-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ${PDF_DIR:-./Project Files}:/data
+    environment:
+      - PDF_DIR=/data
+      - LABELS_XLSX=/data/1-2026-DANE.xlsx
+      - VLM_URL=http://vlm-server:8081
+    depends_on:
+      - vlm-server
+    restart: unless-stopped
+
+  # ── Manual redaction tool ────────────────────────────────────────────────
+  # Open http://localhost:8083 to draw and apply redaction zones.
+  redaction:
+    build:
+      context: .
+      dockerfile: Dockerfile.redaction
+    ports:
+      - "8083:8083"
+    volumes:
+      - ${PDF_DIR:-./Project Files}:/data
+    restart: unless-stopped
+
+volumes:
+  hf-cache:   # persists the downloaded Qwen model weights between runs

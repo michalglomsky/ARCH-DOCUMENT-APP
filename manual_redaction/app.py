@@ -420,4 +420,4 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8083)
     args = ap.parse_args()
-    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="info")

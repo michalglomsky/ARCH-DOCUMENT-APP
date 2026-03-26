@@ -1,0 +1,4 @@
+# Manual redaction tool dependencies
+fastapi
+uvicorn[standard]
+pymupdf

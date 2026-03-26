@@ -87,7 +87,11 @@ _lock = threading.Lock()
 
 def load_model(model_name: str, lora_adapter: str, max_pixels: int) -> None:
     global _model, _processor, _device, _model_name, _adapter_path, _max_pixels
-    _device = "mps" if torch.backends.mps.is_available() else "cpu"
+    _device = (
+        "cuda" if torch.cuda.is_available()
+        else "mps" if torch.backends.mps.is_available()
+        else "cpu"
+    )
     print(f"Loading {model_name} on {_device} …")
     _processor = AutoProcessor.from_pretrained(model_name, max_pixels=max_pixels)
     _model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
@@ -339,4 +343,4 @@ if __name__ == "__main__":
         if _preprocess_debug_dir:
             print(f"  Debug images → {_preprocess_debug_dir}")
     load_model(args.model, args.lora_adapter, args.max_pixels)
-    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="info")

@@ -1,0 +1,24 @@
+# VLM inference server — requires an NVIDIA GPU (CUDA 12.1)
+# Base image includes PyTorch 2.2 + CUDA 12.1 + cuDNN 8
+FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements/vlm.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+WORKDIR /app
+COPY finetune_qwen_vl_qa/scripts/ /app/scripts/
+
+# Hugging Face model cache — mount a named volume here to avoid
+# re-downloading Qwen2.5-VL-7B (~15 GB) on every restart
+ENV HF_HOME=/hf-cache
+
+EXPOSE 8081
+
+CMD ["python", "/app/scripts/serve_vlm_qa.py", \
+     "--model", "Qwen/Qwen2.5-VL-7B-Instruct", \
+     "--port", "8081"]

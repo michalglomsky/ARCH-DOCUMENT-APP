@@ -1,0 +1,5 @@
+# App server (browser UI + VLM proxy) dependencies
+fastapi
+uvicorn[standard]
+httpx
+openpyxl

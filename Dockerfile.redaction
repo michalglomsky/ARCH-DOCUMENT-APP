@@ -1,0 +1,12 @@
+# Manual redaction tool (CPU only)
+FROM python:3.11-slim
+
+COPY requirements/redaction.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+WORKDIR /app
+COPY manual_redaction/ /app/
+
+EXPOSE 8083
+
+CMD ["python", "app.py", "--port", "8083"]

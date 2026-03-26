@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv*/
+*.egg-info/
+
+# Virtual environments and model outputs
+finetune_qwen_vl_pytorch/.venv*/
+finetune_qwen_vl_qa/out/
+finetune_qwen_vl_pytorch/out/
+
+# Generated training data
+finetune_qwen_vl_qa/data/
+finetune_qwen_vl_pytorch/data/
+
+# Documents — never include in Docker build context
+*.pdf
+*.xlsx
+*.xls
+*.doc
+*.docx
+Project Files/
+
+# Logs
+logs/
+
+# macOS
+.DS_Store
+
+# Git
+.git/

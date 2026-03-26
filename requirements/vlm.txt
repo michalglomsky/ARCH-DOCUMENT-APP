@@ -1,0 +1,12 @@
+# VLM inference server dependencies
+# Note: torch is installed separately in Dockerfile.vlm with the correct CUDA wheels
+transformers>=4.49
+peft>=0.14
+qwen-vl-utils>=0.0.10
+fastapi
+uvicorn[standard]
+pymupdf
+Pillow
+numpy
+openpyxl
+accelerate

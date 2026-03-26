@@ -349,5 +349,5 @@ if __name__ == "__main__":
     print(f"Starting ARCH Document Extractor at http://localhost:{args.port}")
     print(f"VLM server expected at: {_vlm_url()}")
     print(f"PDF source: {_pdf_dir()}")
-    uvicorn.run("server:app", host="127.0.0.1", port=args.port, reload=args.reload,
+    uvicorn.run("server:app", host="0.0.0.0", port=args.port, reload=args.reload,
                 app_dir=str(Path(__file__).parent))
