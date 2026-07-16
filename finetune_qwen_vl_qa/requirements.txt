@@ -1,0 +1,13 @@
+# Same core deps as finetune_qwen_vl_pytorch — use the same .venv311
+# This file is a reference; the venv is shared.
+torch>=2.2
+transformers @ git+https://github.com/huggingface/transformers
+accelerate>=0.27
+peft>=0.10
+qwen-vl-utils>=0.0.8
+pymupdf>=1.24          # fitz — PDF rendering
+tqdm
+fastapi
+uvicorn[standard]
+openpyxl               # Excel read/write (new dependency vs original)
+pydantic>=2

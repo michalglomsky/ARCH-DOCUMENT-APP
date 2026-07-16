@@ -1,0 +1,41 @@
+# Python 3.11 required (Qwen2.5-VL needs transformers features not available on 3.9).
+# Create env: /opt/homebrew/bin/python3.11 -m venv .venv311
+# Activate:   source finetune_qwen_vl_pytorch/.venv311/bin/activate
+# Install:    pip install -r finetune_qwen_vl_pytorch/requirements.txt
+# Then install transformers from source (for Qwen2.5-VL support):
+#   pip install -U "git+https://github.com/huggingface/transformers" accelerate
+
+# PyTorch (CPU/MPS) — install from PyPI; MPS backend ships with the main wheel
+torch>=2.2.0,<2.5.0
+torchvision>=0.17.0,<0.20.0
+torchaudio>=2.2.0,<2.5.0
+
+# Core HuggingFace stack
+# transformers is installed from source (see above) — pin here only as a fallback
+accelerate>=0.27.0,<0.32.0
+peft>=0.9.0,<0.13.0
+datasets>=2.16.0,<3.0.0
+
+# Training utilities
+trl>=0.8.0,<0.10.0
+
+# Serialisation / data
+safetensors>=0.4.0,<0.6.0
+sentencepiece>=0.1.99,<0.3.0
+protobuf>=4.25.0,<6.0.0
+numpy>=1.26.0,<3.0.0
+pillow>=10.0.0,<12.0.0
+tqdm>=4.66.0,<5.0.0
+pyyaml>=6.0.1,<7.0.0
+
+# Document / image preprocessing
+opencv-python>=4.9.0,<5.0.0
+pymupdf>=1.24.0,<2.0.0
+
+# Qwen2.5-VL helper (image packing, dynamic resolution)
+qwen-vl-utils>=0.0.8
+
+# Local VLM server (serve_local_vlm.py)
+fastapi>=0.110.0,<1.0.0
+uvicorn[standard]>=0.29.0,<1.0.0
+pydantic>=2.6.0,<3.0.0

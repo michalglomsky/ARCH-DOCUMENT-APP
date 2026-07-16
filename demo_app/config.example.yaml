@@ -1,0 +1,52 @@
+version: 1
+
+schema:
+  # Define the output columns / JSON keys you want.
+  # The providers should return exactly these keys (plus optional metadata).
+  fields:
+    - nr_wniosku
+    - sposob_wypelnienia
+    - flaga_7_9
+    - nazwa_inwestycji
+    - adres
+    - teren_inwestycji
+    - pow_zabudowy_calosc
+    - szerokosc_elewacji
+    - suma_pow_nadziemnych
+    - suma_pow_podziemnych
+    - wys_gornej_krawedzi
+    - wysokosc_zabudowy
+    - ilosc_kond_nadziemnych
+    - ilosc_kond_podziemnych
+    - geometria_dachu
+    - media
+    - needs_review
+
+pipeline:
+  # If true, run local redaction tool before extraction.
+  enable_redaction: false
+  redaction_command: >
+    python -m redaction_tool.redactor
+    --input-dir "{input_dir}"
+    --output-dir "{redacted_dir}"
+    --config "{redaction_config}"
+  redaction_config: "redaction_tool/config.yaml"
+
+provider:
+  # Choose: "nanonets" or "local_vlm"
+  type: "local_vlm"
+
+nanonets:
+  api_key_env: "NANONETS_API_KEY"
+  # Nanonets OCR API v2 endpoint for your trained model:
+  #   https://app.nanonets.com/api/v2/OCR/Model/<YOUR_MODEL_ID>/LabelFile/
+  # Find YOUR_MODEL_ID in your Nanonets dashboard under the model settings.
+  # endpoint: "https://app.nanonets.com/api/v2/OCR/Model/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/LabelFile/"
+  low_confidence_threshold: 0.8  # fields with Nanonets score below this set needs_review=true
+
+local_vlm:
+  # Endpoint for your local VLM service.
+  # For example, a llama.cpp server or any HTTP wrapper you run locally.
+  endpoint: "http://127.0.0.1:8080/extract"
+  timeout_s: 120
+
